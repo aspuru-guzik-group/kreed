@@ -76,8 +76,3 @@ class UnsignedCoordinateDatamodule(pl.LightningModule):
             num_workers=self.num_workers,
             drop_last=drop_last,
         )
-
-
-module = UnsignedCoordinateDatamodule(10)
-train_loader = module.train_dataloader()
-print(next(iter(train_loader)))
