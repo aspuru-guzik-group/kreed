@@ -8,6 +8,8 @@ from sklearn.model_selection import train_test_split
 
 from kraitchman import rotate_to_principal_axes
 
+SEED = 12049
+
 
 def geom_unpacker():
     raw_dir = pathlib.Path(__file__).parent / "raw"
@@ -46,8 +48,8 @@ def preprocess_geom():
         batch = list(batch.items())
 
         # [0.8 0.1 0.1] split
-        train_subbatch, batch = train_test_split(batch, train_size=0.8)
-        val_subbatch, test_subbatch = train_test_split(batch, train_size=0.5)
+        train_subbatch, batch = train_test_split(batch, train_size=0.8, random_state=SEED)
+        val_subbatch, test_subbatch = train_test_split(batch, train_size=0.5, random_state=(SEED + 1))
 
         subbatches = {
             "train": train_subbatch,
