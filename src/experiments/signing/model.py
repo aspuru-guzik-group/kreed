@@ -115,20 +115,18 @@ class PLCoordinateSignPredictor(pl.LightningModule):
         orig_metric[mask, :] = 0.0
         flip_metric[mask, :] = 0.0
 
-        agg_metric = 0.0
         agg_fn = torch.minimum if (mode == "min") else torch.maximum
 
-        for i, ax in enumerate(["x, y, z"]):
-            G.ndata[f"orig_{ax}"] = orig_metric[:, i]
-            G.ndata[f"flip_{ax}"] = flip_metric[:, i]
+        G.ndata["orig"] = orig_metric
+        G.ndata["flip"] = flip_metric
 
-            agg_metric += agg_fn(
-                dgl.sum_nodes(G, f"orig_{ax}"),
-                dgl.sum_nodes(G, f"flip_{ax}")
-            ).sum()
+        agg_metric = agg_fn(
+            dgl.sum_nodes(G, "orig"),
+            dgl.sum_nodes(G, "flip"),
+        ).sum()
 
-            # cleanup
-            G.ndata.pop(f"orig_{ax}")
-            G.ndata.pop(f"flip_{ax}")
+        # cleanup
+        G.ndata.pop(f"orig")
+        G.ndata.pop(f"flip")
 
         return agg_metric / (3 * num_unmasked)
