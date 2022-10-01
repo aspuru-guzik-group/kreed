@@ -27,14 +27,14 @@ class UnsignedCoordinateDataset(Dataset):
 
         mask = torch.logical_or(
             (atom_nums != 6),  # not carbon
-            torch.any(unsigned_coords < self.tol, dim=-1)  # coordinate too close to axis
+            torch.any(unsigned_coords < self.tol, dim=-1),  # coordinate too close to axis
         )
 
         unsigned_coords[mask, :] = 0.0
         labels[mask, :] = 0.0
 
         G = dgl.rand_graph(atom_nums.shape[0], 0)
-        G.ndata["atom_nums"] = conformer["atom_nums"]
+        G.ndata["atom_nums"] = atom_nums
         G.ndata["coords"] = unsigned_coords
         G.ndata["labels"] = labels
         G.ndata["mask"] = mask
