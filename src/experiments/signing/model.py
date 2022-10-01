@@ -98,6 +98,7 @@ class PLCoordinateSignPredictor(pl.LightningModule):
             acc = self._compute_and_reduce_metric(
                 metric_fn=lambda y, t: (y == t).float(),
                 preds=preds,
+                mode="max",
                 **metric_kwargs,
             )
 
@@ -107,7 +108,7 @@ class PLCoordinateSignPredictor(pl.LightningModule):
 
         return loss
 
-    def _compute_and_reduce_metric(self, metric_fn, G, preds, orig_labels, flip_labels, mask, num_unmasked):
+    def _compute_and_reduce_metric(self, metric_fn, G, preds, orig_labels, flip_labels, mask, num_unmasked, mode="min"):
         orig_metric = metric_fn(preds, orig_labels)
         flip_metric = metric_fn(preds, flip_labels)
 
@@ -115,12 +116,13 @@ class PLCoordinateSignPredictor(pl.LightningModule):
         flip_metric[mask, :] = 0.0
 
         agg_metric = 0.0
+        agg_fn = torch.minimum if (mode == "min") else torch.maximum
 
         for i, ax in enumerate(["x, y, z"]):
             G.ndata[f"orig_{ax}"] = orig_metric[:, i]
             G.ndata[f"flip_{ax}"] = flip_metric[:, i]
 
-            agg_metric += torch.minimum(
+            agg_metric += agg_fn(
                 dgl.sum_nodes(G, f"orig_{ax}"),
                 dgl.sum_nodes(G, f"flip_{ax}")
             ).sum()

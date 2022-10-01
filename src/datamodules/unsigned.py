@@ -41,7 +41,7 @@ class UnsignedCoordinateDataset(Dataset):
         return G
 
 
-class UnsignedCoordinateDatamodule(pl.LightningModule):
+class UnsignedCoordinateDatamodule(pl.LightningDataModule):
 
     def __init__(self, batch_size, num_workers=0, **kwargs):
         super().__init__()

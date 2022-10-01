@@ -135,3 +135,4 @@ dmypy.json
 # Debugging
 data/raw/
 data/processed/
+logs/
