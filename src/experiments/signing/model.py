@@ -81,31 +81,35 @@ class PLCoordinateSignPredictor(pl.LightningModule):
         logits = self.predictor(G)
         preds = (logits > 0.0).detach().float()
 
+        num_unmasked = torch.sum(~G.ndata["mask"]).int()
+
         metric_kwargs = {
             "G": G,
             "orig_labels": G.ndata["labels"],
             "flip_labels": (1.0 - G.ndata["labels"]),
             "mask": G.ndata["mask"],
-            "num_unmasked": torch.sum(~G.ndata["mask"]).int()
+            "num_unmasked": num_unmasked
         }
 
-        loss = self._compute_and_reduce_metric(
+        loss, _ = self._compute_and_reduce_metric(
             metric_fn=lambda y, t: F.binary_cross_entropy_with_logits(y, t, reduction="none"),
             preds=logits,
             **metric_kwargs,
         )
 
         with torch.no_grad():
-            acc = self._compute_and_reduce_metric(
+            acc, agg_accs = self._compute_and_reduce_metric(
                 metric_fn=lambda y, t: (y == t).float(),
                 preds=preds,
                 mode="max",
                 **metric_kwargs,
             )
 
-        batch_size = metric_kwargs["num_unmasked"]
-        self.log(f"{split}_loss", loss, batch_size=batch_size)
-        self.log(f"{split}_acc", acc, batch_size=batch_size)
+            mol_acc = (agg_accs == G.batch_num_nodes()).float().mean()
+
+        self.log(f"{split}_loss", loss, batch_size=num_unmasked)
+        self.log(f"{split}_acc", acc, batch_size=num_unmasked)
+        self.log(f"{split}_mol_acc", mol_acc, batch_size=G.batch_size)
 
         return loss
 
@@ -116,18 +120,19 @@ class PLCoordinateSignPredictor(pl.LightningModule):
         orig_metric[mask, :] = 0.0
         flip_metric[mask, :] = 0.0
 
-        agg_fn = torch.minimum if (mode == "min") else torch.maximum
-
         G.ndata["orig"] = orig_metric
         G.ndata["flip"] = flip_metric
 
-        agg_metric = agg_fn(
+        agg_fn = torch.minimum if (mode == "min") else torch.maximum
+
+        agg_metrics = agg_fn(
             dgl.sum_nodes(G, "orig"),
             dgl.sum_nodes(G, "flip"),
-        ).sum()
+        ).sum(dim=-1)
 
         # cleanup
         G.ndata.pop(f"orig")
         G.ndata.pop(f"flip")
 
-        return agg_metric / (3 * num_unmasked)
+        avg_metric = torch.sum(agg_metrics) / (3 * num_unmasked)
+        return avg_metric, agg_metrics
