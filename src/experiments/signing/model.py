@@ -14,9 +14,10 @@ class CoordinateSignPredictor(nn.Module):
         assert (d_model % n_heads) == 0
 
         self.embed_atom_num = nn.Embedding(50, d_embed)  # TODO: setting to 50 is wasteful
+        self.embed_mask = nn.Embedding(2, d_embed)
 
         self.fc_proj = nn.Sequential(
-            nn.Linear(d_embed + 3 + 1, d_model),
+            nn.Linear(2 * d_embed + 3, d_model),
             nn.ReLU(),
         )
 
@@ -34,8 +35,8 @@ class CoordinateSignPredictor(nn.Module):
         feats = torch.cat(
             [
                 self.embed_atom_num(G.ndata["atom_nums"]),
+                self.embed_mask(G.ndata["mask"].int()),
                 G.ndata["coords"],
-                G.ndata["mask"].unsqueeze(-1).float(),
             ],
             dim=-1
         )
