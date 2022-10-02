@@ -81,13 +81,19 @@ class PLCoordinateSignPredictor(pl.LightningModule):
         logits = self.predictor(G)
         preds = (logits > 0.0).detach().float()
 
-        num_unmasked = torch.sum(~G.ndata["mask"]).int()
+        mask = G.ndata["mask"]
+
+        with torch.no_grad():
+            G.ndata["~mask"] = (~mask).float()
+            batch_num_unmasked = dgl.sum_nodes(G, "~mask").int()
+            num_unmasked = torch.sum(batch_num_unmasked).item()
+            G.ndata.pop("~mask")  # cleanup
 
         metric_kwargs = {
             "G": G,
             "orig_labels": G.ndata["labels"],
             "flip_labels": (1.0 - G.ndata["labels"]),
-            "mask": G.ndata["mask"],
+            "mask": mask,
             "num_unmasked": num_unmasked
         }
 
@@ -105,7 +111,7 @@ class PLCoordinateSignPredictor(pl.LightningModule):
                 **metric_kwargs,
             )
 
-            mol_acc = (agg_accs == G.batch_num_nodes()).float().mean()
+            mol_acc = (agg_accs == (3 * batch_num_unmasked)).float().mean()
 
         self.log(f"{split}_loss", loss, batch_size=num_unmasked)
         self.log(f"{split}_acc", acc, batch_size=num_unmasked)
