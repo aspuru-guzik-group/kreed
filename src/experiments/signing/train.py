@@ -15,16 +15,16 @@ def main():
 
     parser.add_argument("--seed", type=int, default=1244)
 
-    parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--num_workers", type=int, default=0)
+    parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--num_workers", type=int, default=2)
     parser.add_argument("--tol", type=int, default=-1.0)
 
     parser.add_argument("--d_embed", type=int, default=32)
     parser.add_argument("--d_model", type=int, default=128)
     parser.add_argument("--n_heads", type=int, default=4)
-    parser.add_argument("--n_layers", type=int, default=5)
+    parser.add_argument("--n_layers", type=int, default=6)
 
-    parser.add_argument("--epochs", type=float, default=32)
+    parser.add_argument("--epochs", type=float, default=1000)
     parser.add_argument("--lr", type=float, default=1e-4)
 
     args = parser.parse_args()
@@ -67,7 +67,6 @@ def main():
         accelerator=("gpu" if torch.cuda.is_available() else "cpu"),
         devices=1,
         deterministic=True,
-        overfit_batches=10
     )
 
     trainer.fit(model=pl_model, datamodule=datamodule)
