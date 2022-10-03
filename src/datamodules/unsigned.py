@@ -4,15 +4,18 @@ import dgl
 import pytorch_lightning as pl
 import torch
 from torch.utils.data import Dataset
-
+import torch.nn.functional as F
 
 class UnsignedCoordinateDataset(Dataset):
 
-    def __init__(self, conformers, tol=-1.0):
+    def __init__(self, conformers, atoi, tol=-1.0):
         super().__init__()
 
         self.conformers = conformers
+        self.atoi = atoi
         self.tol = tol
+
+        self.d_vocab = (self.atoi >= 0).int().sum().item()
 
     def __len__(self):
         return len(self.conformers)
@@ -30,15 +33,20 @@ class UnsignedCoordinateDataset(Dataset):
             torch.any(unsigned_coords < self.tol, dim=-1),  # coordinate too close to axis
         )
 
-        unsigned_coords[mask, :] = 0.0
-        labels[mask, :] = 0.0
+        atom_ids, atom_counts = torch.unique(atom_nums, return_counts=True)
+        formula = torch.zeros(self.d_vocab, dtype=torch.long)
+        formula[self.atoi[atom_ids.long()]] = atom_counts
+        formula = formula.int()
 
-        G = dgl.rand_graph(atom_nums.shape[0], 0)
+        atom_nums = atom_nums[mask]
+        unsigned_coords = unsigned_coords[mask, :]
+        labels = labels[mask, :]
+
+        G = dgl.rand_graph(unsigned_coords.shape[0], 0)
         G.ndata["atom_nums"] = atom_nums
         G.ndata["coords"] = unsigned_coords
         G.ndata["labels"] = labels
-        G.ndata["mask"] = mask
-        return G
+        return G, formula
 
 
 class UnsignedCoordinateDatamodule(pl.LightningDataModule):
@@ -50,14 +58,19 @@ class UnsignedCoordinateDatamodule(pl.LightningDataModule):
         self.num_workers = num_workers
 
         data_dir = pathlib.Path(__file__).parents[2] / "data" / "processed"
+        self.atoi = torch.load(data_dir / "atoi.pt")
 
         datasets = {"train": None, "val": None, "test": None}
         for split in datasets:
             entries = []
             for path in data_dir.glob(f"{split}_*.pt"):
                 entries.extend(torch.load(path))
-            datasets[split] = UnsignedCoordinateDataset(entries, **kwargs)
+            datasets[split] = UnsignedCoordinateDataset(entries, self.atoi, **kwargs)
         self.datasets = datasets
+
+    @property
+    def d_vocab(self):
+        return self.datasets["train"].d_vocab
 
     def train_dataloader(self):
         return self._loader(split="train", shuffle=True, drop_last=True)

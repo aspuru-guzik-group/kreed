@@ -22,11 +22,13 @@ def geom_unpacker():
 
 def preprocess_conformers(conformers):
     processed_data = []
+    atoms = set()
 
     for conformer_idx, conformer_data in enumerate(conformers):
         xyz = np.array(conformer_data["xyz"])
         atom_nums, coords = xyz[:, 0], xyz[:, 1:]
         atom_nums = atom_nums.astype(np.int32)
+        atoms.update(atom_nums.tolist())
 
         coords = rotate_to_principal_axes(atom_nums, coords)
 
@@ -36,12 +38,14 @@ def preprocess_conformers(conformers):
             "geom_id": conformer_data["geom_id"],
         })
 
-    return processed_data
+    return processed_data, atoms
 
 
 def preprocess_geom():
     save_dir = pathlib.Path(__file__).parent / "processed"
     save_dir.mkdir(exist_ok=True)
+
+    atom_vocab = set()
 
     for batch_idx, batch in enumerate(geom_unpacker()):
 
@@ -63,8 +67,15 @@ def preprocess_geom():
             processed_subbatch = []
             for smiles in subbatch:
                 conformers = subbatch[smiles]["conformers"]
-                processed_subbatch.extend(preprocess_conformers(conformers))
+                conformers, atoms = preprocess_conformers(conformers)
+                processed_subbatch.extend(conformers)
+                atom_vocab.update(atoms)
             torch.save(processed_subbatch, save_dir / f"{split}_{batch_idx}.pt")
+
+    atoi = torch.full([118], -1, dtype=torch.long)
+    for i, z in enumerate(sorted(atom_vocab)):
+        atoi[z] = i
+    torch.save(atoi, save_dir / "atoi.pt")
 
 
 if __name__ == "__main__":

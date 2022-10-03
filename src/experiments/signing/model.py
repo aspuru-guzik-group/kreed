@@ -8,16 +8,21 @@ from torch import nn
 
 class CoordinateSignPredictor(nn.Module):
 
-    def __init__(self, d_embed, d_model, n_heads, n_layers):
+    def __init__(self, d_embed, d_vocab, d_model, n_heads, n_layers):
         super().__init__()
 
         assert (d_model % n_heads) == 0
 
-        self.embed_atom_num = nn.Embedding(50, d_embed)  # TODO: setting to 50 is wasteful
-        self.embed_mask = nn.Embedding(2, d_embed)
+        self.d_embed = d_embed
+        self.d_vocab = d_vocab
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.n_layers = n_layers
+
+        self.embed_atom_num = nn.Embedding(118, d_embed)  # TODO: setting to 118 is wasteful
 
         self.fc_proj = nn.Sequential(
-            nn.Linear(2 * d_embed + 3, d_model),
+            nn.Linear(d_embed + d_vocab + 3, d_model),
             nn.ReLU(),
         )
 
@@ -31,11 +36,14 @@ class CoordinateSignPredictor(nn.Module):
 
         self.fc_out = nn.Linear(d_model, 3)
 
-    def forward(self, G):
+    def forward(self, G, formula):
+        mol_comp = formula / G.batch_num_nodes().unsqueeze(-1)  # normalize
+        mol_comp = torch.repeat_interleave(mol_comp, repeats=G.batch_num_nodes(), dim=0)  # broadcast to ndata shape
+
         feats = torch.cat(
             [
                 self.embed_atom_num(G.ndata["atom_nums"]),
-                self.embed_mask(G.ndata["mask"].int()),
+                mol_comp,
                 G.ndata["coords"],
             ],
             dim=-1
@@ -51,7 +59,7 @@ class PLCoordinateSignPredictor(pl.LightningModule):
 
     def __init__(
         self,
-        d_embed, d_model, n_heads, n_layers,
+        d_embed, d_vocab, d_model, n_heads, n_layers,
         lr,
     ):
         super().__init__()
@@ -60,6 +68,7 @@ class PLCoordinateSignPredictor(pl.LightningModule):
 
         self.predictor = CoordinateSignPredictor(
             d_embed=d_embed,
+            d_vocab=d_vocab,
             d_model=d_model,
             n_heads=n_heads,
             n_layers=n_layers
@@ -69,32 +78,22 @@ class PLCoordinateSignPredictor(pl.LightningModule):
         return torch.optim.Adam(params=self.parameters(), lr=self.hparams.lr)
 
     def training_step(self, batch, batch_idx):
-        return self._step(batch, "train")
+        return self._step(*batch, split="train")
 
     def validation_step(self, batch, batch_idx):
-        return self._step(batch, "val")
+        return self._step(*batch, split="val")
 
     def test_step(self, batch, batch_idx):
-        return self._step(batch, "test")
+        return self._step(*batch, split="test")
 
-    def _step(self, G, split):
-        logits = self.predictor(G)
+    def _step(self, G, formula, split):
+        logits = self.predictor(G, formula)
         preds = (logits > 0.0).detach().float()
-
-        mask = G.ndata["mask"]
-
-        with torch.no_grad():
-            G.ndata["~mask"] = (~mask).float()
-            batch_num_unmasked = dgl.sum_nodes(G, "~mask").int()
-            num_unmasked = torch.sum(batch_num_unmasked).item()
-            G.ndata.pop("~mask")  # cleanup
 
         metric_kwargs = {
             "G": G,
             "orig_labels": G.ndata["labels"],
             "flip_labels": (1.0 - G.ndata["labels"]),
-            "mask": mask,
-            "num_unmasked": num_unmasked
         }
 
         loss, _ = self._compute_and_reduce_metric(
@@ -107,29 +106,23 @@ class PLCoordinateSignPredictor(pl.LightningModule):
             acc, agg_accs = self._compute_and_reduce_metric(
                 metric_fn=lambda y, t: (y == t).float(),
                 preds=preds,
-                mode="max",
+                take_max=True,
                 **metric_kwargs,
             )
 
-            mol_acc = (agg_accs == (3 * batch_num_unmasked)).float().mean()
+            mol_acc = (agg_accs == (3 * G.batch_num_nodes())).float().mean()
 
-        self.log(f"{split}_loss", loss, batch_size=num_unmasked)
-        self.log(f"{split}_acc", acc, batch_size=num_unmasked)
+        self.log(f"{split}_loss", loss, batch_size=logits.shape[0])
+        self.log(f"{split}_acc", acc, batch_size=logits.shape[0])
         self.log(f"{split}_mol_acc", mol_acc, batch_size=G.batch_size)
 
         return loss
 
-    def _compute_and_reduce_metric(self, metric_fn, G, preds, orig_labels, flip_labels, mask, num_unmasked, mode="min"):
-        orig_metric = metric_fn(preds, orig_labels)
-        flip_metric = metric_fn(preds, flip_labels)
+    def _compute_and_reduce_metric(self, metric_fn, G, preds, orig_labels, flip_labels, take_max=False):
+        G.ndata["orig"] = metric_fn(preds, orig_labels)
+        G.ndata["flip"] = metric_fn(preds, flip_labels)
 
-        orig_metric[mask, :] = 0.0
-        flip_metric[mask, :] = 0.0
-
-        G.ndata["orig"] = orig_metric
-        G.ndata["flip"] = flip_metric
-
-        agg_fn = torch.minimum if (mode == "min") else torch.maximum
+        agg_fn = torch.maximum if take_max else torch.minimum
 
         agg_metrics = agg_fn(
             dgl.sum_nodes(G, "orig"),
@@ -140,5 +133,5 @@ class PLCoordinateSignPredictor(pl.LightningModule):
         G.ndata.pop(f"orig")
         G.ndata.pop(f"flip")
 
-        avg_metric = torch.sum(agg_metrics) / (3 * num_unmasked)
+        avg_metric = torch.sum(agg_metrics) / preds.numel()
         return avg_metric, agg_metrics

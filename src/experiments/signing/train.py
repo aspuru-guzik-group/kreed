@@ -49,6 +49,7 @@ def main():
     # initialize and load model
     pl_model = PLCoordinateSignPredictor(
         d_embed=args.d_embed,
+        d_vocab=datamodule.d_vocab,
         d_model=args.d_model,
         n_heads=args.n_heads,
         n_layers=args.n_layers,
