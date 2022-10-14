@@ -4,8 +4,7 @@ import dgl
 import pytorch_lightning as pl
 import torch
 from torch.utils.data import Dataset
-import torch.nn.functional as F
-
+from sklearn.model_selection import train_test_split
 
 class GEOMDataset(Dataset):
 
@@ -52,26 +51,38 @@ class GEOMDataset(Dataset):
 
 class GEOMDatamodule(pl.LightningDataModule):
 
-    def __init__(self, batch_size, num_workers=0, **kwargs):
+    def __init__(
+        self,
+        seed,
+        batch_size,
+        split_ratio=(0.8, 0.1, 0.1),
+        num_workers=0,
+        remove_Hs=False,
+        tol=-1.0,
+    ):
         super().__init__()
 
+        self.seed = seed
         self.batch_size = batch_size
         self.num_workers = num_workers
 
-        data_dir = pathlib.Path(__file__).parents[2] / "data" / "processed"
-        self.atoi = torch.load(data_dir / "atoi.pt")
+        data_dir = pathlib.Path(__file__).parents[2] / "data" / "geom" / "processed"
 
-        datasets = {"train": None, "val": None, "test": None}
-        for split in datasets:
-            entries = []
-            for path in data_dir.glob(f"{split}_*.pt"):
-                entries.extend(torch.load(path))
-            datasets[split] = UnsignedCoordinateDataset(entries, self.atoi, **kwargs)
+        with open(data_dir / "atoms.txt") as f:
+            atom_vocab = [int(z.strip()) for z in f.readlines()]
+            atom_vocab.sort()
+            if remove_Hs:
+                assert atom_vocab[0] == 1
+                atom_vocab = atom_vocab[1:]  # remove H from atom vocab
+        self.d_vocab = len(atom_vocab)
+
+
+        conformations = torch.load(data_dir / "conformations.pt")
+
+
+
+
         self.datasets = datasets
-
-    @property
-    def d_vocab(self):
-        return self.datasets["train"].d_vocab
 
     def train_dataloader(self):
         return self._loader(split="train", shuffle=True, drop_last=True)

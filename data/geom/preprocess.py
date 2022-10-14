@@ -31,13 +31,15 @@ def preprocess_geom(n_conformers):
             conformers.sort(key=lambda d: d["totalenergy"])
             conformers = conformers[:n_conformers]
 
+            conformer_data = []
+
             for c in conformers:
                 xyz = torch.tensor(c["xyz"])
                 atom_nums, coords = xyz[:, 0].int(), xyz[:, 1:].float()
 
                 geom_atom_nums.update(atom_nums.tolist())
 
-                geom_conformations.append({
+                conformer_data.append({
                     "xyz": coords,
                     "atom_nums": atom_nums,
                     "geom_id": c["geom_id"],
@@ -45,6 +47,7 @@ def preprocess_geom(n_conformers):
                 })
 
             geom_smiles.append(smiles)
+            geom_conformations.append(conformer_data)
 
     with open(save_dir / "smiles.txt", "w+") as f:
         f.write("\n".join(geom_smiles))
@@ -52,6 +55,9 @@ def preprocess_geom(n_conformers):
         geom_atom_nums = list(map(str, sorted(geom_atom_nums)))
         f.write("\n".join(geom_atom_nums))
     torch.save(geom_conformations, save_dir / "conformations.pt")
+
+    n_conformations = sum(len(x) for x in geom_conformations)
+    print(f"Caching {n_conformations} conformations from {len(geom_smiles)} molecules.")
 
 
 if __name__ == "__main__":
