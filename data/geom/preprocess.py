@@ -15,8 +15,8 @@ def geom_unpacker():
         yield batch
 
 
-def preprocess_geom(n_conformers):
-    save_dir = pathlib.Path(__file__).parent / "processed" / f"confs_{n_conformers}"
+def preprocess_geom(n_conformers, n_perms):
+    save_dir = pathlib.Path(__file__).parent / "processed"
     save_dir.mkdir(parents=True, exist_ok=True)
 
     geom_smiles = []
@@ -53,10 +53,20 @@ def preprocess_geom(n_conformers):
         f.write("\n".join(geom_atom_nums))
     torch.save(geom_conformations, save_dir / "conformations.pt")
 
+    # premake permutations for reproducible train-val-test splitting
+    gen = torch.Generator()
+    gen.manual_seed(1243489)
+    for i in range(n_perms):
+        perm = torch.randperm(len(geom_conformations), generator=gen)
+        torch.save(perm, save_dir / f"perm_{i}.pt")
+
+    print(f"Cached {len(geom_conformations)} conformations & {n_perms} perms.")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--n_conformers", type=int, default=30)
+    parser.add_argument("--n_perms", type=int, default=5)
     args = parser.parse_args()
 
-    preprocess_geom(args.n_conformers)
+    preprocess_geom(**vars(args))
