@@ -16,7 +16,7 @@ def geom_unpacker():
 
 
 def preprocess_geom(n_conformers):
-    save_dir = pathlib.Path(__file__).parent / "processed" / f"confs_{n_conformers}"
+    save_dir = pathlib.Path(__file__).parent / "processed"
     save_dir.mkdir(parents=True, exist_ok=True)
 
     geom_smiles = []
