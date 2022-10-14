@@ -6,7 +6,8 @@ import torch
 from torch.utils.data import Dataset
 import torch.nn.functional as F
 
-class UnsignedCoordinateDataset(Dataset):
+
+class GEOMDataset(Dataset):
 
     def __init__(self, conformers, atoi, tol=-1.0):
         super().__init__()
@@ -49,7 +50,7 @@ class UnsignedCoordinateDataset(Dataset):
         return G, formula
 
 
-class UnsignedCoordinateDatamodule(pl.LightningDataModule):
+class GEOMDatamodule(pl.LightningDataModule):
 
     def __init__(self, batch_size, num_workers=0, **kwargs):
         super().__init__()

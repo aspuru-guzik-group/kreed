@@ -15,8 +15,8 @@ def geom_unpacker():
         yield batch
 
 
-def preprocess_geom(n_conformers, remove_Hs):
-    save_dir = pathlib.Path(__file__).parent / "processed" / f"confs_{n_conformers}{('_no_Hs' if remove_Hs else '')}"
+def preprocess_geom(n_conformers):
+    save_dir = pathlib.Path(__file__).parent / "processed" / f"confs_{n_conformers}"
     save_dir.mkdir(parents=True, exist_ok=True)
 
     geom_smiles = []
@@ -34,11 +34,6 @@ def preprocess_geom(n_conformers, remove_Hs):
             for c in conformers:
                 xyz = torch.tensor(c["xyz"])
                 atom_nums, coords = xyz[:, 0].int(), xyz[:, 1:].float()
-
-                if remove_Hs:
-                    mask = (atom_nums != 1)
-                    atom_nums = atom_nums[mask]
-                    coords = coords[mask]
 
                 geom_atom_nums.update(atom_nums.tolist())
 
@@ -62,7 +57,6 @@ def preprocess_geom(n_conformers, remove_Hs):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--n_conformers", type=int, default=30)
-    parser.add_argument("--remove_Hs", action="store_true")
     args = parser.parse_args()
 
-    preprocess_geom(**vars(args))
+    preprocess_geom(args.n_conformers)
