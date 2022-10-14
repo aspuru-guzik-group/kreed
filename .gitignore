@@ -133,6 +133,6 @@ dmypy.json
 .idea/
 
 # Debugging
-data/raw/
-data/processed/
+data/geom/raw/
+data/geom/processed/
 logs/
