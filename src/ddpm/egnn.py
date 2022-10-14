@@ -1,3 +1,4 @@
+import dgl
 import dgl.function as fn
 import torch
 import torch.nn as nn
@@ -68,7 +69,6 @@ class EGNNConv(nn.Module):
 
     def forward(self, graph, node_feat, coord_feat, edge_feat=None):
         with graph.local_scope():
-
             # node feature
             graph.ndata["h"] = node_feat
 
@@ -97,3 +97,49 @@ class EGNNConv(nn.Module):
             x = coord_feat + x_neigh
 
             return h, x
+
+
+class EGNNDynamics(nn.Module):
+
+    def __init__(
+        self,
+        d_embed_atom,
+        d_hidden,
+        n_layers,
+    ):
+        super().__init__()
+
+        self.embed_atom = nn.Embedding(100, d_embed_atom)
+        self.lin_hid = nn.Linear(2 + 3 + d_embed_atom, d_hidden)
+
+        self.egnn_layers = nn.ModuleList([
+            EGNNConv(in_size=d_hidden, hidden_size=d_hidden, out_size=d_hidden, edge_feat_size=1)
+            for _ in range(n_layers)
+        ])
+
+    def forward(self, G, t):
+        xyz = G.ndata["xyz"]
+        h = torch.cat(
+            [
+                self.embed_atom(G.ndata["atom_nums"]),
+                dgl.broadcast_nodes(G, t).unsqueeze(-1).float(),
+                G.ndata["abs_mask"].unsqueeze(-1).float(),
+                G.ndata["abs_xyz"],
+            ],
+            dim=-1
+        )
+
+        with G.local_scope():
+            G.apply_edges(fn.u_sub_v("xyz", "xyz", "xyz_diff"))
+            a = G.edata["xyz_diff"].square().sum(dim=1).unsqueeze(-1)
+
+        h = self.lin_hid(h)
+        for layer in self.egnn_layers:
+            h, xyz = layer(G, node_feat=h, coord_feat=xyz, edge_feat=a)
+
+        with G.local_scope():
+            G.ndata["vel"] = xyz - G.ndata["xyz"]
+            com = dgl.mean_nodes(G, "vel")
+            vel = G.ndata["vel"] - dgl.broadcast_nodes(G, com)
+
+        return vel

@@ -5,8 +5,6 @@ import pickle
 import torch
 import tqdm
 
-from src.kraitchman import rotate_to_principal_axes
-
 
 def geom_unpacker():
     raw_dir = pathlib.Path(__file__).parent / "raw"
@@ -38,7 +36,7 @@ def preprocess_geom(n_conformers):
                 atom_nums, coords = xyz[:, 0].long(), xyz[:, 1:].float()
 
                 conformer_data.append({
-                    "xyz": rotate_to_principal_axes(atom_nums, coords),
+                    "xyz": coords,
                     "atom_nums": atom_nums,
                     "geom_id": c["geom_id"],
                     "smiles_id": len(geom_smiles),

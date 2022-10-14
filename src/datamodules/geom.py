@@ -6,14 +6,15 @@ import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
+from src.kraitchman import rotate_to_principal_axes
+
 
 class GEOMDataset(Dataset):
 
-    def __init__(self, conformations, remove_Hs, tol):
+    def __init__(self, conformations, tol):
         super().__init__()
 
         self.conformations = conformations
-        self.remove_Hs = remove_Hs
         self.tol = tol
 
     def __len__(self):
@@ -26,29 +27,30 @@ class GEOMDataset(Dataset):
         atom_nums = conformer["atom_nums"]
         n = atom_nums.shape[0]
 
-        if self.remove_Hs:
-            nonH_mask = (atom_nums != 1)
-            xyz = xyz[nonH_mask]
-            atom_nums = [nonH_mask]
-
-        abs_xyz = torch.abs(xyz)
-
-        sign_mask = torch.logical_or(
-            (atom_nums != 6),  # not carbon
-            torch.any(abs_xyz < self.tol, dim=-1),  # coordinate too close to axis
-        )
-
-        abs_xyz[sign_mask, :] = 0.0
-
         # create a complete graph
         nodes = torch.arange(n)
-        u, v = torch.meshgrid(nodes, nodes)
+        u, v = torch.meshgrid(nodes, nodes, indexing="ij")
         u, v = u.flatten(), v.flatten()
 
         G = dgl.graph((u, v), num_nodes=n)
         G.ndata["atom_nums"] = atom_nums
         G.ndata["xyz"] = xyz
+
+        # This mutates G.ndata["xyz"]
+        rotate_to_principal_axes(G)
+
+        abs_xyz = torch.abs(G.ndata["xyz"])
+
+        abs_mask = torch.logical_and(
+            (atom_nums == 6),  # carbon
+            torch.any(abs_xyz >= self.tol, dim=-1),  # coordinate not too close to axis
+        )
+
+        abs_xyz[~abs_mask, :] = 0.0
+
         G.ndata["abs_xyz"] = abs_xyz
+        G.ndata["abs_mask"] = abs_mask
+
         return G
 
 
@@ -60,7 +62,6 @@ class GEOMDatamodule(pl.LightningDataModule):
         batch_size=64,
         split_ratio=(0.8, 0.1, 0.1),
         num_workers=0,
-        remove_Hs=False,
         tol=-1.0,
     ):
         super().__init__()
@@ -84,7 +85,7 @@ class GEOMDatamodule(pl.LightningDataModule):
         datasets = {}
         for n, conformations in splits.items():
             conformations = sum(conformations, [])  # flattens the 2D list
-            datasets[n] = GEOMDataset(conformations, remove_Hs=remove_Hs, tol=tol)
+            datasets[n] = GEOMDataset(conformations, tol=tol)
         self.datasets = datasets
 
     def train_dataloader(self):
