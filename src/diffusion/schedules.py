@@ -7,21 +7,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def clip_noise_schedule(alphas2, clip_min=0.001):
+def clip_noise_schedule(alphas_cumprod, clip_min=0.001):
     """For a noise schedule given by alpha^2, this clips alpha_t / alpha_t-1.
     This may help improve stability during sampling.
     """
 
-    alphas2 = np.concatenate([np.ones(1), alphas2], axis=0)
-
-    alphas2_step = (alphas2[1:] / alphas2[:-1])
-    alphas2_step = np.clip(alphas2_step, a_min=clip_min, a_max=1.)
-
-    alphas2 = np.cumprod(alphas2_step, axis=0)
-    return alphas2
+    alphas_cumprod = np.concatenate([np.ones(1), alphas_cumprod], axis=0)
+    alphas = alphas_cumprod[1:] / alphas_cumprod[:-1]
+    alphas = np.clip(alphas, a_min=clip_min, a_max=1.)
+    return np.cumprod(alphas, axis=0)
 
 
-def polynomial_schedule(timesteps, s=1e-5, power=3.0):
+def polynomial_schedule(timesteps, s=1e-5, power=2.0):
     """A noise schedule based on a simple polynomial equation: 1 - x^power.
     """
 
@@ -29,32 +26,23 @@ def polynomial_schedule(timesteps, s=1e-5, power=3.0):
     t = np.linspace(0, T, T)
 
     f = (1 - np.power(t / T, power)) ** 2
+    f = clip_noise_schedule(f, clip_min=0.001)
 
-    alphas2 = (1 - 2 * s) * f + s
-    alphas2 = clip_noise_schedule(alphas2, clip_min=0.001)
-    return alphas2
+    alphas_cumprod = (1 - 2 * s) * f + s
+    return alphas_cumprod
 
 
-def cosine_beta_schedule(timesteps, s=0.008, raise_to_power=1):
+def cosine_beta_schedule(timesteps, s=0.008):
     """Cosine schedule, as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
     """
 
-    T = timesteps + 2
+    T = timesteps + 1
     t = np.linspace(0, T, T)
 
     f = np.cos(((t / T) + s) / (1 + s) * np.pi * 0.5) ** 2
-    alphas_step = f / f[0]
+    alphas_cumprod = f / f[0]
 
-    betas_step = 1 - (alphas_step[1:] / alphas_step[:-1])
-    betas_step = np.clip(betas_step, a_min=0, a_max=0.999)
-
-    alphas_step = 1 - betas_step
-    alphas2 = np.cumprod(alphas_step, axis=0)
-
-    if raise_to_power != 1:
-        alphas2 = np.power(alphas2, raise_to_power)
-
-    return alphas2
+    return clip_noise_schedule(alphas_cumprod, clip_min=0.001)
 
 
 class PositiveLinear(nn.Module):
@@ -112,28 +100,20 @@ class PredefinedNoiseSchedule(BaseNoiseSchedule):
 
         self.timesteps = timesteps
 
-        if noise_schedule.startswith("cosine"):
-            splits = noise_schedule.split("_")
-            assert len(splits) == 2
-            power = int(splits[1])
-            alphas2 = cosine_beta_schedule(timesteps, raise_to_power=power)
+        if noise_schedule == "cosine":
+            alphas_cumprod = cosine_beta_schedule(timesteps)
 
         elif noise_schedule.startswith("polynomial"):
             splits = noise_schedule.split("_")
             assert len(splits) == 2
             power = float(splits[1])
-            alphas2 = polynomial_schedule(timesteps, s=s_poly, power=power)
+            alphas_cumprod = polynomial_schedule(timesteps, s=s_poly, power=power)
 
         else:
             raise ValueError(noise_schedule)
 
-        sigmas2 = 1 - alphas2
-
-        log_alphas2 = np.log(alphas2)
-        log_sigmas2 = np.log(sigmas2)
-        log_alphas2_to_sigmas2 = log_alphas2 - log_sigmas2
-
-        gamma = torch.from_numpy(-log_alphas2_to_sigmas2).float()
+        alphas_cumprod = torch.from_numpy(alphas_cumprod).float()
+        gamma = torch.log(alphas_cumprod) - torch.log(1.0 - alphas_cumprod)
         self.gamma = torch.nn.Parameter(gamma, requires_grad=False)
 
     def forward(self, t):
