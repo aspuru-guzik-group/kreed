@@ -5,6 +5,8 @@ import pickle
 import torch
 import tqdm
 
+from src.kraitchman import rotate_to_principal_axes
+
 
 def geom_unpacker():
     raw_dir = pathlib.Path(__file__).parent / "raw"
@@ -21,8 +23,6 @@ def preprocess_geom(n_conformers):
 
     geom_smiles = []
     geom_conformations = []
-    geom_atom_nums = set()
-
     for batch_idx, batch in enumerate(geom_unpacker()):
 
         for smiles, batch_metdata in batch.items():
@@ -35,12 +35,10 @@ def preprocess_geom(n_conformers):
 
             for c in conformers:
                 xyz = torch.tensor(c["xyz"])
-                atom_nums, coords = xyz[:, 0].int(), xyz[:, 1:].float()
-
-                geom_atom_nums.update(atom_nums.tolist())
+                atom_nums, coords = xyz[:, 0].long(), xyz[:, 1:].float()
 
                 conformer_data.append({
-                    "xyz": coords,
+                    "xyz": rotate_to_principal_axes(atom_nums, coords),
                     "atom_nums": atom_nums,
                     "geom_id": c["geom_id"],
                     "smiles_id": len(geom_smiles),
@@ -51,9 +49,6 @@ def preprocess_geom(n_conformers):
 
     with open(save_dir / "smiles.txt", "w+") as f:
         f.write("\n".join(geom_smiles))
-    with open(save_dir / "atoms.txt", "w+") as f:
-        geom_atom_nums = list(map(str, sorted(geom_atom_nums)))
-        f.write("\n".join(geom_atom_nums))
     torch.save(geom_conformations, save_dir / "conformations.pt")
 
     n_conformations = sum(len(x) for x in geom_conformations)

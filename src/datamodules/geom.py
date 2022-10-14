@@ -3,50 +3,46 @@ import pathlib
 import dgl
 import pytorch_lightning as pl
 import torch
-from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
+from torch.utils.data import Dataset
+
 
 class GEOMDataset(Dataset):
 
-    def __init__(self, conformers, atoi, tol=-1.0):
+    def __init__(self, conformations, remove_Hs, tol):
         super().__init__()
 
-        self.conformers = conformers
-        self.atoi = atoi
+        self.conformations = conformations
+        self.remove_Hs = remove_Hs
         self.tol = tol
 
-        self.d_vocab = (self.atoi >= 0).int().sum().item()
-
     def __len__(self):
-        return len(self.conformers)
+        return len(self.conformations)
 
     def __getitem__(self, idx):
-        conformer = self.conformers[idx]
+        conformer = self.conformations[idx]
         xyz = conformer["xyz"]
         atom_nums = conformer["atom_nums"]
 
-        unsigned_coords = torch.abs(xyz)
-        labels = (xyz >= 0.0).float()
+        if self.remove_Hs:
+            nonH_mask = (atom_nums != 1)
+            xyz = xyz[nonH_mask]
+            atom_nums = [nonH_mask]
 
-        mask = torch.logical_or(
+        abs_xyz = torch.abs(xyz)
+
+        sign_mask = torch.logical_or(
             (atom_nums != 6),  # not carbon
-            torch.any(unsigned_coords < self.tol, dim=-1),  # coordinate too close to axis
+            torch.any(abs_xyz < self.tol, dim=-1),  # coordinate too close to axis
         )
 
-        atom_ids, atom_counts = torch.unique(atom_nums, return_counts=True)
-        formula = torch.zeros(self.d_vocab, dtype=torch.long)
-        formula[self.atoi[atom_ids.long()]] = atom_counts
-        formula = formula.int()
+        abs_xyz[sign_mask, :] = 0.0
 
-        atom_nums = atom_nums[mask]
-        unsigned_coords = unsigned_coords[mask, :]
-        labels = labels[mask, :]
-
-        G = dgl.rand_graph(unsigned_coords.shape[0], 0)
+        G = dgl.rand_graph(xyz.shape[0], 0)
         G.ndata["atom_nums"] = atom_nums
-        G.ndata["coords"] = unsigned_coords
-        G.ndata["labels"] = labels
-        return G, formula
+        G.ndata["xyz"] = xyz
+        G.ndata["abs_xyz"] = abs_xyz
+        return G
 
 
 class GEOMDatamodule(pl.LightningDataModule):
@@ -54,7 +50,7 @@ class GEOMDatamodule(pl.LightningDataModule):
     def __init__(
         self,
         seed,
-        batch_size,
+        batch_size=64,
         split_ratio=(0.8, 0.1, 0.1),
         num_workers=0,
         remove_Hs=False,
@@ -68,20 +64,20 @@ class GEOMDatamodule(pl.LightningDataModule):
 
         data_dir = pathlib.Path(__file__).parents[2] / "data" / "geom" / "processed"
 
-        with open(data_dir / "atoms.txt") as f:
-            atom_vocab = [int(z.strip()) for z in f.readlines()]
-            atom_vocab.sort()
-            if remove_Hs:
-                assert atom_vocab[0] == 1
-                atom_vocab = atom_vocab[1:]  # remove H from atom vocab
-        self.d_vocab = len(atom_vocab)
+        # This is a 2D ragged list
+        # D[i][j] = j-th conformer for the i-th molecule
+        D = torch.load(data_dir / "conformations.pt")
 
+        # Split by molecule
+        splits = {"train": None, "val": None, "test": None}
+        val_test_ratio = split_ratio[1] / (split_ratio[1] + split_ratio[2])
+        splits["train"], D = train_test_split(D, train_size=split_ratio[0], random_state=seed)
+        splits["val"], splits["test"] = train_test_split(D, train_size=val_test_ratio, random_state=(seed + 1))
 
-        conformations = torch.load(data_dir / "conformations.pt")
-
-
-
-
+        datasets = {}
+        for n, conformations in splits.items():
+            conformations = sum(conformations, [])  # flattens the 2D list
+            datasets[n] = GEOMDataset(conformations, remove_Hs=remove_Hs, tol=tol)
         self.datasets = datasets
 
     def train_dataloader(self):
