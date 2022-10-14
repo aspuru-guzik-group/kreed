@@ -21,8 +21,10 @@ class GEOMDataset(Dataset):
 
     def __getitem__(self, idx):
         conformer = self.conformations[idx]
+
         xyz = conformer["xyz"]
         atom_nums = conformer["atom_nums"]
+        n = atom_nums.shape[0]
 
         if self.remove_Hs:
             nonH_mask = (atom_nums != 1)
@@ -38,7 +40,12 @@ class GEOMDataset(Dataset):
 
         abs_xyz[sign_mask, :] = 0.0
 
-        G = dgl.rand_graph(xyz.shape[0], 0)
+        # create a complete graph
+        nodes = torch.arange(n)
+        u, v = torch.meshgrid(nodes, nodes)
+        u, v = u.flatten(), v.flatten()
+
+        G = dgl.graph((u, v), num_nodes=n)
         G.ndata["atom_nums"] = atom_nums
         G.ndata["xyz"] = xyz
         G.ndata["abs_xyz"] = abs_xyz
