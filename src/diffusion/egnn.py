@@ -3,6 +3,8 @@ import dgl.function as fn
 import torch
 import torch.nn as nn
 
+from src.diffusion.distributions import centered_mean
+
 
 # Modified from DGL source code:
 # https://github.com/dmlc/dgl/blob/master/python/dgl/nn/pytorch/conv/egnnconv.py
@@ -122,7 +124,7 @@ class EGNNDynamics(nn.Module):
         h = torch.cat(
             [
                 self.embed_atom(G.ndata["atom_nums"]),
-                dgl.broadcast_nodes(G, t).unsqueeze(-1).float(),
+                dgl.broadcast_nodes(G, t).float(),
                 G.ndata["abs_mask"].unsqueeze(-1).float(),
                 G.ndata["abs_xyz"],
             ],
@@ -137,9 +139,5 @@ class EGNNDynamics(nn.Module):
         for layer in self.egnn_layers:
             h, xyz = layer(G, node_feat=h, coord_feat=xyz, edge_feat=a)
 
-        with G.local_scope():
-            G.ndata["vel"] = xyz - G.ndata["xyz"]
-            com = dgl.mean_nodes(G, "vel")
-            vel = G.ndata["vel"] - dgl.broadcast_nodes(G, com)
-
-        return vel
+        vel = xyz - G.ndata["xyz"]
+        return centered_mean(G, vel)
