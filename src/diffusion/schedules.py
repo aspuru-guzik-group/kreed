@@ -95,19 +95,19 @@ class FixedNoiseSchedule(BaseNoiseSchedule):
     """Predefined noise schedule. Essentially creates a lookup array for predefined (non-learned) noise schedules.
     """
 
-    def __init__(self, shape, timesteps, s_poly=1e-5):
+    def __init__(self, shape, timesteps, precision):
         super().__init__()
 
         self.timesteps = timesteps
 
         if shape == "cosine":
-            alphas_cumprod = cosine_beta_schedule(timesteps)
+            alphas_cumprod = cosine_beta_schedule(timesteps, s=precision)
 
         elif shape.startswith("polynomial"):
             splits = shape.split("_")
             assert len(splits) == 2
             power = float(splits[1])
-            alphas_cumprod = polynomial_schedule(timesteps, s=s_poly, power=power)
+            alphas_cumprod = polynomial_schedule(timesteps, s=precision, power=power)
 
         else:
             raise ValueError()

@@ -6,7 +6,7 @@ import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
-from src.kraitchman import rotate_to_principal_axes
+from src.kraitchman import rotated_to_principal_axes
 
 
 class GEOMDataset(Dataset):
@@ -36,8 +36,8 @@ class GEOMDataset(Dataset):
         G.ndata["atom_nums"] = atom_nums
         G.ndata["xyz"] = xyz
 
-        # This mutates G.ndata["xyz"]
-        rotate_to_principal_axes(G)
+        # canonicalize conformation
+        G = rotated_to_principal_axes(G)
 
         abs_xyz = torch.abs(G.ndata["xyz"])
 

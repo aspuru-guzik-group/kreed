@@ -3,32 +3,19 @@ import torch
 from rdkit.Chem.rdchem import GetPeriodicTable
 
 PTABLE = GetPeriodicTable()
-ATOM_MASSES = torch.tensor([0] + [PTABLE.GetAtomicWeight(z) for z in range(1, 119)], dtype=torch.float64)
+ATOM_MASSES = torch.tensor([0] + [PTABLE.GetAtomicWeight(z) for z in range(1, 119)], dtype=torch.float32)
 
 
-def rotate_to_principal_axes(G):
-    G.ndata["m"] = ATOM_MASSES[G.ndata["atom_nums"]].unsqueeze(-1)
-    G.ndata["xyz"] = G.ndata["xyz"].double()  # increase precision
-
-    # center molecule to center of mass (CoM)
-    coms = dgl.sum_nodes(G, "xyz", weight="m") / dgl.sum_nodes(G, "m")
-    G.ndata["xyz"] -= dgl.broadcast_nodes(G, coms)
-
-    # compute inertia dyadic matrix
-    I = inertia_dyadic(G)
-
-    moments, V = torch.linalg.eigh(I)
-    V = dgl.broadcast_nodes(G, V)
-
-    G.ndata["xyz"] = (V @ G.ndata["xyz"].unsqueeze(-1)).squeeze(-1).float()
-    G.ndata.pop("m")  # cleanup
-
-
-def inertia_dyadic(G):
+def rotated_to_principal_axes(G):
     with G.local_scope():
-        xyz = G.ndata["xyz"]
+        m = ATOM_MASSES[G.ndata["atom_nums"]]
 
-        m = G.ndata["m"].squeeze(-1)
+        # center molecule to center of mass (CoM)
+        G.ndata["m"] = m.unsqueeze(-1)
+        coms = dgl.sum_nodes(G, "xyz", weight="m") / dgl.sum_nodes(G, "m")
+
+        # compute inertia dyadic matrix
+        xyz = G.ndata["xyz"]
         x, y, z = xyz[..., 0], xyz[..., 1], xyz[..., 2]
 
         x2 = x ** 2.0
@@ -49,8 +36,21 @@ def inertia_dyadic(G):
         Iyz = Izy = dgl.sum_nodes(G, "Iyz")
         Ixz = Izx = dgl.sum_nodes(G, "Ixz")
 
-    return torch.stack([
-        torch.stack([Ixx, Ixy, Ixz], dim=-1),
-        torch.stack([Iyx, Iyy, Iyz], dim=-1),
-        torch.stack([Izx, Izy, Izz], dim=-1)
-    ], dim=-2)
+        I = torch.stack([
+            torch.stack([Ixx, Ixy, Ixz], dim=-1),
+            torch.stack([Iyx, Iyy, Iyz], dim=-1),
+            torch.stack([Izx, Izy, Izz], dim=-1),
+        ], dim=-2)
+
+        # stop gradient flow
+        coms = coms.detach()
+        I = I.detach().double()
+
+    xyz_centered = G.ndata["xyz"] - dgl.broadcast_nodes(G, coms)
+
+    moments, V = torch.linalg.eigh(I)
+    V = dgl.broadcast_nodes(G, V.float())
+
+    G_canonical = G.local_var()
+    G_canonical.ndata["xyz"] = (V @ xyz_centered.unsqueeze(-1)).squeeze(-1)
+    return G_canonical
