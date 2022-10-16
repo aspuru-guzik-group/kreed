@@ -108,11 +108,12 @@ class FixedNoiseSchedule(BaseNoiseSchedule):
 
         alphas_cumprod = torch.from_numpy(alphas_cumprod).float()
         gamma = torch.log(1.0 - alphas_cumprod) - torch.log(alphas_cumprod)
+        gamma = F.pad(gamma, (1, 0), value=-torch.inf)
         self.gamma = nn.Parameter(gamma, requires_grad=False)
 
     def forward(self, t):
         t_int = torch.round(t * self.timesteps).long()
-        return self.gamma[t_int - 1]
+        return self.gamma[t_int]
 
 
 class LearnedNoiseSchedule(BaseNoiseSchedule):
@@ -146,5 +147,8 @@ class LearnedNoiseSchedule(BaseNoiseSchedule):
 
         # Rescale to [gamma_0, gamma_1]
         gamma = self.gamma_0 + (self.gamma_1 - self.gamma_0) * normalized_gamma
+
+        # Set t = 0 to -inf
+        gamma = torch.where(t == 0.0, -torch.inf, gamma)
 
         return gamma
