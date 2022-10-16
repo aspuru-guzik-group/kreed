@@ -138,6 +138,5 @@ class EGNNDynamics(nn.Module):
         h = self.lin_hid(h)
         for layer in self.egnn_layers:
             h, xyz = layer(G, node_feat=h, coord_feat=xyz, edge_feat=a)
-
         vel = xyz - G.ndata["xyz"]
         return centered_mean(G, vel)

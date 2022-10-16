@@ -18,30 +18,24 @@ def clip_noise_schedule(alphas_cumprod, clip_margin=0.001):
     return np.cumprod(alphas, axis=0)
 
 
-def polynomial_schedule(timesteps, s=1e-5, power=2.0):
+def polynomial_schedule(T, s=1e-5, power=2.0):
     """A noise schedule based on a simple polynomial equation: 1 - x^power.
     """
 
-    T = timesteps + 1
-    t = np.linspace(0, T, T)
-
+    t = np.linspace(1, T, T)
     f = (1 - np.power(t / T, power)) ** 2
     f = clip_noise_schedule(f, clip_margin=0.001)
-
     alphas_cumprod = (1 - 2 * s) * f + s
     return alphas_cumprod
 
 
-def cosine_beta_schedule(timesteps, s=0.008):
+def cosine_beta_schedule(T, s=0.008):
     """Cosine schedule, as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
     """
 
-    T = timesteps + 1
-    t = np.linspace(0, T, T)
-
+    t = np.linspace(1, T, T)
     f = np.cos(((t / T) + s) / (1 + s) * np.pi * 0.5) ** 2
     alphas_cumprod = f / f[0]
-
     return clip_noise_schedule(alphas_cumprod, clip_margin=0.001)
 
 
@@ -85,9 +79,9 @@ class BaseNoiseSchedule(nn.Module):
     def forward(self, t):
         raise NotImplementedError()
 
-    def sweep(self, num_steps=50):
-        t = torch.linspace(0, 1, num_steps).view(num_steps, 1)
-        gamma = self.forward(t)
+    def sweep(self, num_steps):
+        t = torch.linspace(1, num_steps, num_steps) / num_steps
+        gamma = self.forward(t.unsqueeze(-1)).squeeze(-1)
         return t, gamma
 
 
@@ -118,7 +112,7 @@ class FixedNoiseSchedule(BaseNoiseSchedule):
 
     def forward(self, t):
         t_int = torch.round(t * self.timesteps).long()
-        return self.gamma[t_int]
+        return self.gamma[t_int - 1]
 
 
 class LearnedNoiseSchedule(BaseNoiseSchedule):

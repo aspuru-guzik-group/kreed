@@ -3,7 +3,6 @@ import math
 import dgl
 import numpy as np
 import torch
-from equivariant_diffusion import utils
 from equivariant_diffusion import utils as diffusion_utils
 from torch.nn import functional as F
 
@@ -92,25 +91,30 @@ class EnVariationalDiffusion(torch.nn.Module):
         else:
             self.gamma = FixedNoiseSchedule(noise_shape, timesteps=self.T, precision=noise_precision)
 
-    def broadcast_step(self, G, t):
-        if isinstance(t, int):
-            t = t / self.T  # normalize
-        if isinstance(t, float):
-            t = torch.full([G.bach_size, 1], t, device=G.device)
+    def broadcast_step(self, G, step):
+        if isinstance(step, int):
+            step = step / self.T  # normalize
+        if isinstance(step, float):
+            step = torch.full([G.bach_size, 1], step, device=G.device)
         else:
-            assert t.shape == (G.batch_size, 1)
-        return t
+            assert step.shape == (G.batch_size, 1)
+        return step
 
-    def subspace_dimensionality(self, node_mask):
-        """Compute the dimensionality on translation-invariant linear subspace where distributions on x are defined."""
+    def dist_q_Gs_given_Gt(self, G_t, t, s):
+        """Computes the mean and variance of q(G_t|G_s) where t > s."""
 
-        number_of_nodes = torch.sum(node_mask.squeeze(2), dim=1)
-        return (number_of_nodes - 1) * self.n_dims
+        t = self.broadcast_step(G_t, step=t)
+        s = self.broadcast_step(G_t, step=s)
+
+        alphas_cumprod_t = alphas_cumprod(self.gamma(t))
+        alphas_cumprod_s = alphas_cumprod(self.gamma(s))
+
+        alpha_prod_stot = torch.exp(torch.log(alphas_cumprod_t) - torch.log(alphas_cumprod_s))
 
     def dist_q_Gt_given_G0(self, G_0, t):
         """Computes the mean and variance of q(G_t|G_0)."""
 
-        t = self.broadcast_step(G=G_0, t=t)
+        t = self.broadcast_step(G=G_0, step=t)
 
         gamma_t = self.gamma(t)
         alphas_cumprod_t = alphas_cumprod(gamma_t)
@@ -224,7 +228,9 @@ class EnVariationalDiffusion(torch.nn.Module):
 
         mu_T, var_T = self.dist_q_Gt_given_G0(G_0=G_0, t=self.T)
         zeros, ones = torch.zeros_like(mu_T), torch.ones_like(var_T)
-        kl_div = dists.gaussian_KL_divergence(G_0, mu_T, var_T, zeros, ones)
+
+        d = (G_0.batch_num_nodes() - 1) * 3
+        kl_div = dists.gaussian_KL_divergence(G_0, mu_T, var_T, zeros, ones, d=d)
         return kl_div
 
     def compute_loss(self, x, h, node_mask, edge_mask, context, t0_always):
@@ -376,10 +382,23 @@ class EnVariationalDiffusion(torch.nn.Module):
 
         return neg_log_pxh
 
+    def sample_GT_like(self, G, tie_noise):
+        if tie_noise:
+            n_nodes = torch.unique(G.batch_num_nodes()).shape
+            assert n_nodes.numel() == 1  # only 1 unique graph size
+            eps = torch.randn((n_nodes.item(), 3))
+            eps = torch.cat([eps] * G.batch_size, dim=0)
+        else:
+            eps = torch.randn_like(G.ndata["xyz"])
+
+        G_T = G.local_var()
+        G_T.ndata["xyz"] = dists.centered_mean(G, eps)
+        return G_T
+
     def sample_p_Gtm1_given_Gt(self, G_t, t, tie_noise=False):
         """Samples from G_s ~ p(G_s|G_t). Only used during sampling."""
 
-        t = self.broadcast_step(G=G_t, t=t)
+        t = self.broadcast_step(G=G_t, step=t)
         tm1 = t - (1 / self.T)  # t - 1
 
         alphas_cumprod_t = alphas_cumprod(self.gamma(t))
@@ -400,91 +419,32 @@ class EnVariationalDiffusion(torch.nn.Module):
         std = dgl.broadcast_nodes(G_t, var.sqrt())
         std = torch.broadcast_to(std, mean.shape)
 
-        if tie_noise:
-            n_nodes = torch.unique(G_t.batch_num_nodes()).shape
-            assert n_nodes.numel() == 1  # only 1 unique graph size
-            eps = torch.randn((n_nodes, 3))
-            xyz_tm1 = mean + std * eps.repeat(G_t.batch_size, dim=0)
-        else:
-            xyz_tm1 = torch.normal(mean=mean, std=std)
-
-        G_tm1 = G_t.local_var()
-        G_tm1.ndata["xyz"] = dists.centered_mean(G_tm1, xyz_tm1)
+        # sample next coordinates
+        G_tm1 = self.sample_GT_like(G_t, tie_noise=tie_noise)
+        G_tm1.ndata["xyz"] = mean + std * G_tm1.ndata["xyz"]
+        dists.assert_centered_mean(G_tm1, G_tm1.ndata["xyz"])  # sanity check
         return G_tm1
 
     @torch.no_grad()
-    def sample(self, n_samples, n_nodes, node_mask, edge_mask, context, tie_noise=False):
+    def sample(self, G_init, tie_noise=False, keep_frames=None):
         """Draw samples from the generative model."""
 
-        if tie_noise:
-            # Noise is broadcasted over the batch axis, useful for visualizations.
-            z = self.sample_combined_position_feature_noise(1, n_nodes, node_mask)
-        else:
-            z = self.sample_combined_position_feature_noise(n_samples, n_nodes, node_mask)
+        G_T = self.sample_GT_like(G_init, tie_noise=tie_noise)
+        dists.assert_centered_mean(G_T, G_T.ndata["xyz"])
 
-        diffusion_utils.assert_mean_zero_with_mask(z[:, :, :self.n_dims], node_mask)
+        frames = {self.T: G_T}
 
         # Iteratively sample p(z_s | z_t) for t = 1, ..., T, with s = t - 1.
-        for s in reversed(range(0, self.T)):
-            s_array = torch.full((n_samples, 1), fill_value=s, device=z.device)
-            t_array = s_array + 1
-            s_array = s_array / self.T
-            t_array = t_array / self.T
+        G_t = G_T
+        for t in range(self.T, 0, -1):
+            G_t = self.sample_p_Gtm1_given_Gt(G_t=G_t, t=t, tie_noise=tie_noise)
+            if t in keep_frames:
+                frames[t] = keep_frames
+        dists.assert_centered_mean(G_t, G_t.ndata["xyz"])  # sanity check
 
-            z = self.sample_p_Gs_given_Gtm1(s_array, t_array, z, node_mask, edge_mask, context, fix_noise=tie_noise)
-
-        # Finally sample p(x, h | z_0).
-        x, h = self.sample_pG0_given_G1(z, node_mask, edge_mask, context, fix_noise=tie_noise)
-
-        diffusion_utils.assert_mean_zero_with_mask(x, node_mask)
-
-        max_cog = torch.sum(x, dim=1, keepdim=True).abs().max().item()
-        if max_cog > 5e-2:
-            print(f'Warning cog drift with error {max_cog:.3f}. Projecting '
-                  f'the positions down.')
-            x = diffusion_utils.remove_mean_with_mask(x, node_mask)
-
-        return x, h
-
-    @torch.no_grad()
-    def sample_chain(self, n_samples, n_nodes, node_mask, edge_mask, context, keep_frames=None):
-        """Draw samples from the generative model, keep the intermediate states for visualization purposes.
-        """
-
-        z = self.sample_combined_position_feature_noise(n_samples, n_nodes, node_mask)
-
-        diffusion_utils.assert_mean_zero_with_mask(z[:, :, :self.n_dims], node_mask)
+        frames[0] = G_t
 
         if keep_frames is None:
-            keep_frames = self.T
+            return G_t
         else:
-            assert keep_frames <= self.T
-        chain = torch.zeros((keep_frames,) + z.size(), device=z.device)
-
-        # Iteratively sample p(z_s | z_t) for t = 1, ..., T, with s = t - 1.
-        for s in reversed(range(0, self.T)):
-            s_array = torch.full((n_samples, 1), fill_value=s, device=z.device)
-            t_array = s_array + 1
-            s_array = s_array / self.T
-            t_array = t_array / self.T
-
-            z = self.sample_p_Gs_given_Gtm1(
-                s_array, t_array, z, node_mask, edge_mask, context)
-
-            diffusion_utils.assert_mean_zero_with_mask(z[:, :, :self.n_dims], node_mask)
-
-            # Write to chain tensor.
-            write_index = (s * keep_frames) // self.T
-            chain[write_index] = self.unnormalize_z(z, node_mask)
-
-        # Finally sample p(x, h | z_0).
-        x, h = self.sample_pG0_given_G1(z, node_mask, edge_mask, context)
-
-        diffusion_utils.assert_mean_zero_with_mask(x[:, :, :self.n_dims], node_mask)
-
-        xh = torch.cat([x, h['categorical'], h['integer']], dim=2)
-        chain[0] = xh  # Overwrite last frame with the resulting x and h.
-
-        chain_flat = chain.view(n_samples * keep_frames, *z.size()[1:])
-
-        return chain_flat
+            return G_t, keep_frames
