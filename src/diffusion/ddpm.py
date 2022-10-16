@@ -376,6 +376,16 @@ class EnVariationalDiffusion(torch.nn.Module):
 
         return neg_log_pxh
 
+    def sample_q_Gt_given_Gs(self, G_s, s, t):
+        """Samples from G_t ~ q(G_t|G_s), where s < t."""
+
+        mu_t, var_t = self.dist_q_Gt_given_G0(G_s=G_s, s=s, t=t)
+
+        G_t = self.sample_GT_like(G_s, tie_noise=False)
+        std = dgl.broadcast_nodes(G_t, var_t.sqrt())
+        G_t.ndata["xyz"] = mu_t + std * G_t.ndata["xyz"]
+        return G_t
+
     def sample_GT_like(self, G, tie_noise):
         """Samples from G_T ~ p(G_T)."""
 
@@ -390,16 +400,6 @@ class EnVariationalDiffusion(torch.nn.Module):
         G_T = G.local_var()
         G_T.ndata["xyz"] = dists.centered_mean(G, eps)
         return G_T
-
-    def sample_q_Gt_given_Gs(self, G_s, s, t):
-        """Samples from G_t ~ q(G_t|G_s), where s < t."""
-
-        mu_t, var_t = self.dist_q_Gt_given_G0(G_s=G_s, s=s, t=t)
-
-        G_t = self.sample_GT_like(G_s, tie_noise=False)
-        std = dgl.broadcast_nodes(G_t, var_t.sqrt())
-        G_t.ndata["xyz"] = mu_t + std * G_t.ndata["xyz"]
-        return G_t
 
     def sample_p_Gtm1_given_Gt(self, G_t, t, tie_noise=False):
         """Samples from G_{t-1} ~ p(G_{t-1}|G_t)."""
