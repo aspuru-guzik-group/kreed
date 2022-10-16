@@ -377,6 +377,8 @@ class EnVariationalDiffusion(torch.nn.Module):
         return neg_log_pxh
 
     def sample_GT_like(self, G, tie_noise):
+        """Samples from G_T ~ p(G_T)."""
+
         if tie_noise:
             n_nodes = torch.unique(G.batch_num_nodes()).shape
             assert n_nodes.numel() == 1  # only 1 unique graph size
