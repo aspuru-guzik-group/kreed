@@ -127,22 +127,15 @@ class EnVariationalDiffusion(torch.nn.Module):
                 error = dgl.mean_nodes(G, "error")
         return error
 
-    def log_constants_p_G0_given_G1(self, G_0, G_1):
-        """Computes p(x|z0)."""
+    def log_normalize_p_G0_given_G1(self, G_0):
+        """Computes the log-normalizing constant of p(G_0|G_1)."""
 
-        batch_size = x.size(0)
+        # Recall that var_x = sigma_0^2 / alpha_0^2 = SNR(-0.5 gamma_0).
 
-        n_nodes = node_mask.squeeze(2).sum(1)  # N has shape [B]
-        assert n_nodes.size() == (batch_size,)
-        degrees_of_freedom_x = (G.batch_num_nodes() - 1) * 3
-
-        zeros = torch.zeros((x.size(0), 1), device=x.device)
-        gamma_0 = self.gamma(zeros)
-
-        # Recall that sigma_x = sqrt(sigma_0^2 / alpha_0^2) = SNR(-0.5 gamma_0).
-        log_sigma_x = 0.5 * gamma_0.view(batch_size)
-
-        return degrees_of_freedom_x * (- log_sigma_x - 0.5 * np.log(2 * np.pi))
+        ones = torch.ones([G_0.batch_size, 1], device=G_0.device)
+        gamma_1 = self.gamma(ones)
+        d = (G_0.batch_num_nodes() - 1) * 3
+        return -0.5 * d * (np.log(2 * np.pi) + gamma_1)
 
     def log_pxh_given_z0_without_constants(
         self, x, h, z_t, gamma_0, eps, net_out, node_mask, epsilon=1e-10
@@ -276,7 +269,7 @@ class EnVariationalDiffusion(torch.nn.Module):
 
         # The _constants_ depending on sigma_0 from the
         # cross entropy term E_q(z0 | x) [log p(x | z0)].
-        neg_log_constants = -self.log_constants_p_G0_given_G1(x, node_mask)
+        neg_log_constants = -self.log_normalize_p_G0_given_G1(x, node_mask)
 
         # Reset constants during training with l2 loss.
         if self.training and self.loss_type == 'l2':
