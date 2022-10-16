@@ -118,25 +118,16 @@ class EnVariationalDiffusion(torch.nn.Module):
         var_t = 1.0 - alphas_cumprod_t.squeeze(-1)  # (batch_size)
         return mean_t, var_t
 
-    def pred_G0_from_Gt(self, G_t, eps_t, gamma_t):
-        z_t = G_t.ndata["xyz"]
-        alphas_cumprod_t = alphas_cumprod(gamma_t)
-        alphas_cumprod_t = dgl.broadcast_nodes(alphas_cumprod_t, G_t)
-
-        G_0 = G_t.local_var()
-        G_0.ndata["xyz"] = (z_t - (1.0 - alphas_cumprod_t).sqrt() * eps_t) / alphas_cumprod_t.sqrt()
-        return G_0
-
-    def compute_error(self, G, pred_eps, eps):
+    def l2_noise_error(self, G, pred_eps, eps, reduce_sum=True):
         with G.local_scope():
             G.ndata["error"] = (pred_eps - eps).square()
-            if self.training and (self.loss_type == "l2"):
-                error = dgl.mean_nodes(G, "error")
-            else:
+            if reduce_sum:
                 error = dgl.sum_nodes(G, "error")
+            else:
+                error = dgl.mean_nodes(G, "error")
         return error
 
-    def log_constants_p_x_given_z0(self, G, node_mask):
+    def log_constants_p_G0_given_G1(self, G_0, G_1):
         """Computes p(x|z0)."""
 
         batch_size = x.size(0)
@@ -171,7 +162,7 @@ class EnVariationalDiffusion(torch.nn.Module):
 
         # Computes the error for the distribution N(x | 1 / alpha_0 z_0 + sigma_0/alpha_0 eps_0, sigma_0 / alpha_0),
         # the weighting in the epsilon parametrization is exactly '1'.
-        log_p_x_given_z_without_constants = -0.5 * self.compute_error(net_x, gamma_0, eps_x)
+        log_p_x_given_z_without_constants = -0.5 * self.l2_noise_error(net_x, gamma_0, eps_x)
 
         # Compute delta indicator masks.
         h_integer = torch.round(h['integer'] * self.norm_values[2] + self.norm_biases[2]).long()
@@ -273,7 +264,7 @@ class EnVariationalDiffusion(torch.nn.Module):
         net_out = self.phi(z_t, t, node_mask, edge_mask, context)
 
         # Compute the error.
-        error = self.compute_error(net_out, gamma_t, eps)
+        error = self.l2_noise_error(net_out, gamma_t, eps)
 
         if self.training and self.loss_type == 'l2':
             SNR_weight = torch.ones_like(error)
@@ -285,7 +276,7 @@ class EnVariationalDiffusion(torch.nn.Module):
 
         # The _constants_ depending on sigma_0 from the
         # cross entropy term E_q(z0 | x) [log p(x | z0)].
-        neg_log_constants = -self.log_constants_p_x_given_z0(x, node_mask)
+        neg_log_constants = -self.log_constants_p_G0_given_G1(x, node_mask)
 
         # Reset constants during training with l2 loss.
         if self.training and self.loss_type == 'l2':
@@ -376,30 +367,33 @@ class EnVariationalDiffusion(torch.nn.Module):
 
         return neg_log_pxh
 
+    def sample_randn_G_like(self, G_init, mean=None, var=None, tie_noise=False):
+        """Samples from G ~ p(G_base), where p = N(mean, var), or p = N(0, I) if mean and var are not given."""
+
+        if tie_noise:
+            n_nodes = torch.unique(G_init.batch_num_nodes()).shape
+            assert n_nodes.numel() == 1  # only 1 unique graph size
+            eps = torch.randn((n_nodes.item(), 3))
+            eps = torch.cat([eps] * G_init.batch_size, dim=0)
+        else:
+            eps = torch.randn_like(G_init.ndata["xyz"])
+        eps = dists.centered_mean(G_init, eps)
+
+        G = G_init.local_var()
+        if (mean is None) and (var is None):
+            G.ndata["xyz"] = eps
+        else:
+            assert (mean is not None) and (var is not None)
+            std = dgl.broadcast_nodes(G, var.sqrt())
+            std = torch.broadcast_to(std, mean.shape)
+            G.ndata["xyz"] = mean + std * eps
+        return G
+
     def sample_q_Gt_given_Gs(self, G_s, s, t):
         """Samples from G_t ~ q(G_t|G_s), where s < t."""
 
         mu_t, var_t = self.dist_q_Gt_given_G0(G_s=G_s, s=s, t=t)
-
-        G_t = self.sample_GT_like(G_s, tie_noise=False)
-        std = dgl.broadcast_nodes(G_t, var_t.sqrt())
-        G_t.ndata["xyz"] = mu_t + std * G_t.ndata["xyz"]
-        return G_t
-
-    def sample_GT_like(self, G, tie_noise):
-        """Samples from G_T ~ p(G_T)."""
-
-        if tie_noise:
-            n_nodes = torch.unique(G.batch_num_nodes()).shape
-            assert n_nodes.numel() == 1  # only 1 unique graph size
-            eps = torch.randn((n_nodes.item(), 3))
-            eps = torch.cat([eps] * G.batch_size, dim=0)
-        else:
-            eps = torch.randn_like(G.ndata["xyz"])
-
-        G_T = G.local_var()
-        G_T.ndata["xyz"] = dists.centered_mean(G, eps)
-        return G_T
+        return self.sample_randn_G_like(G_init=G_s, mean=mu_t, var=var_t, tie_noise=False)
 
     def sample_p_Gtm1_given_Gt(self, G_t, t, tie_noise=False):
         """Samples from G_{t-1} ~ p(G_{t-1}|G_t)."""
@@ -418,24 +412,17 @@ class EnVariationalDiffusion(torch.nn.Module):
         dists.assert_centered_mean(G_t, G_t.ndata["xyz"])
         dists.assert_centered_mean(G_t, noise)
 
-        mean = (G_t.ndata["xyz"] + dgl.broadcast_nodes(G_t, scale) * noise)
-        mean = mean / dgl.broadcast_nodes(G_t, alphas_t.sqrt())
-
+        mean = (G_t.ndata["xyz"] - dgl.broadcast_nodes(G_t, scale) * noise) / dgl.broadcast_nodes(G_t, alphas_t.sqrt())
         var = (1.0 - alphas_t) * (1.0 - alphas_cumprod_tm1) / (1 - alphas_cumprod_t)
-        std = dgl.broadcast_nodes(G_t, var.sqrt())
-        std = torch.broadcast_to(std, mean.shape)
 
         # sample next coordinates
-        G_tm1 = self.sample_GT_like(G_t, tie_noise=tie_noise)
-        G_tm1.ndata["xyz"] = mean + std * G_tm1.ndata["xyz"]
-        dists.assert_centered_mean(G_tm1, G_tm1.ndata["xyz"])  # sanity check
-        return G_tm1
+        return self.sample_randn_G_like(G_init=G_t, mean=mean, var=var, tie_noise=tie_noise)
 
     @torch.no_grad()
-    def sample(self, G_init, tie_noise=False, keep_frames=None):
+    def sample_p_G0(self, G_init, tie_noise=False, keep_frames=None):
         """Draw samples from the generative model."""
 
-        G_T = self.sample_GT_like(G_init, tie_noise=tie_noise)
+        G_T = self.sample_randn_G_like(G_init, tie_noise=tie_noise)
         dists.assert_centered_mean(G_T, G_T.ndata["xyz"])
 
         frames = {self.T: G_T}
