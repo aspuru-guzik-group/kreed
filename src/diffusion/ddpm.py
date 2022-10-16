@@ -100,27 +100,21 @@ class EnVariationalDiffusion(torch.nn.Module):
             assert step.shape == (G.batch_size, 1)
         return step
 
-    def dist_q_Gs_given_Gt(self, G_t, t, s):
-        """Computes the mean and variance of q(G_t|G_s) where t > s."""
+    def dist_q_Gt_given_Gs(self, G_s, s, t):
+        """Computes the mean and variance of q(G_t|G_s) where s < t."""
 
-        t = self.broadcast_step(G_t, step=t)
-        s = self.broadcast_step(G_t, step=s)
-
-        alphas_cumprod_t = alphas_cumprod(self.gamma(t))
-        alphas_cumprod_s = alphas_cumprod(self.gamma(s))
-
-        alpha_prod_stot = torch.exp(torch.log(alphas_cumprod_t) - torch.log(alphas_cumprod_s))
-
-    def dist_q_Gt_given_G0(self, G_0, t):
-        """Computes the mean and variance of q(G_t|G_0)."""
-
-        t = self.broadcast_step(G=G_0, step=t)
-
+        t = self.broadcast_step(G_s, step=t)
         gamma_t = self.gamma(t)
-        alphas_cumprod_t = alphas_cumprod(gamma_t)
-        mean_scale = alphas_cumprod_t.sqrt()
+        alphas_cumprod_t = alphas_cumprod(self.gamma(t))
 
-        mean_t = dgl.broadcast_nodes(mean_scale, G_0) * G_0.ndata["xyz"]  # (n_nodes, 3)
+        if s == 0:
+            alphas_prod = alphas_cumprod(self.gamma(t))
+        else:
+            s = self.broadcast_step(G_s, step=s)
+            gamma_s = self.gamma(s)
+            alphas_prod = torch.exp(F.logsigmoid(-gamma_t) - F.logsigmoid(-gamma_s))
+
+        mean_t = dgl.broadcast_nodes(alphas_prod.sqrt(), G_s) * G_s.ndata["xyz"]  # (n_nodes, 3)
         var_t = 1.0 - alphas_cumprod_t.squeeze(-1)  # (batch_size)
         return mean_t, var_t
 
@@ -226,7 +220,7 @@ class EnVariationalDiffusion(torch.nn.Module):
     def prior_matching_loss(self, G_0):
         """Computes KL[q(G_T|G_0)||p(G_0)] where p(G_0) ~ Normal(0, I) is the prior."""
 
-        mu_T, var_T = self.dist_q_Gt_given_G0(G_0=G_0, t=self.T)
+        mu_T, var_T = self.dist_q_Gt_given_G0(G_s=G_0, s=0, t=self.T)
         zeros, ones = torch.zeros_like(mu_T), torch.ones_like(var_T)
 
         d = (G_0.batch_num_nodes() - 1) * 3
@@ -395,8 +389,18 @@ class EnVariationalDiffusion(torch.nn.Module):
         G_T.ndata["xyz"] = dists.centered_mean(G, eps)
         return G_T
 
+    def sample_q_Gt_given_Gs(self, G_s, s, t):
+        """Samples from G_t ~ q(G_t|G_s), where s < t."""
+
+        mu_t, var_t = self.dist_q_Gt_given_G0(G_s=G_s, s=s, t=t)
+
+        G_t = self.sample_GT_like(G_s, tie_noise=False)
+        std = dgl.broadcast_nodes(G_t, var_t.sqrt())
+        G_t.ndata["xyz"] = mu_t + std * G_t.ndata["xyz"]
+        return G_t
+
     def sample_p_Gtm1_given_Gt(self, G_t, t, tie_noise=False):
-        """Samples from G_s ~ p(G_s|G_t). Only used during sampling."""
+        """Samples from G_{t-1} ~ p(G_{t-1}|G_t)."""
 
         t = self.broadcast_step(G=G_t, step=t)
         tm1 = t - (1 / self.T)  # t - 1
