@@ -130,12 +130,12 @@ class EnVariationalDiffusion(torch.nn.Module):
     def log_normalize_p_G0_given_G1(self, G_0):
         """Computes the log-normalizing constant of p(G_0|G_1)."""
 
-        # Recall that var_x = sigma_0^2 / alpha_0^2 = SNR(-0.5 gamma_0).
+        # Recall that var_x = (1 - bar{alpha}_1) / bar{alpha}_1 = 1/SNR(gamma_1) = 1/exp(-gamma_1).
 
         ones = torch.ones([G_0.batch_size, 1], device=G_0.device)
-        gamma_1 = self.gamma(ones)
+        log_var_1 = self.gamma(ones)
         d = (G_0.batch_num_nodes() - 1) * 3
-        return -0.5 * d * (np.log(2 * np.pi) + gamma_1)
+        return -0.5 * d * (np.log(2 * np.pi) + log_var_1)
 
     def log_pxh_given_z0_without_constants(
         self, x, h, z_t, gamma_0, eps, net_out, node_mask, epsilon=1e-10
@@ -388,13 +388,16 @@ class EnVariationalDiffusion(torch.nn.Module):
         mu_t, var_t = self.dist_q_Gt_given_G0(G_s=G_s, s=s, t=t)
         return self.sample_randn_G_like(G_init=G_s, mean=mu_t, var=var_t, tie_noise=False)
 
-    def sample_p_Gtm1_given_Gt(self, G_t, t, tie_noise=False):
+    def sample_p_Gtm1_given_Gt(self, G_t, t: int, tie_noise=False):
         """Samples from G_{t-1} ~ p(G_{t-1}|G_t)."""
+
+        last_step = (t == 1)
 
         t = self.broadcast_step(G=G_t, step=t)
         tm1 = t - (1 / self.T)  # t - 1
 
-        alphas_cumprod_t = alphas_cumprod(self.gamma(t))
+        gamma_t = self.gamma(t)
+        alphas_cumprod_t = alphas_cumprod(gamma_t)
         alphas_cumprod_tm1 = alphas_cumprod(self.gamma(tm1))
         alphas_t = alphas_cumprod_t / alphas_cumprod_tm1
 
@@ -406,7 +409,10 @@ class EnVariationalDiffusion(torch.nn.Module):
         dists.assert_centered_mean(G_t, noise)
 
         mean = (G_t.ndata["xyz"] - dgl.broadcast_nodes(G_t, scale) * noise) / dgl.broadcast_nodes(G_t, alphas_t.sqrt())
-        var = (1.0 - alphas_t) * (1.0 - alphas_cumprod_tm1) / (1 - alphas_cumprod_t)
+        if last_step:
+            var = SNR(-0.5 * gamma_t)
+        else:
+            var = (1.0 - alphas_t) * (1.0 - alphas_cumprod_tm1) / (1 - alphas_cumprod_t)
 
         # sample next coordinates
         return self.sample_randn_G_like(G_init=G_t, mean=mean, var=var, tie_noise=tie_noise)
