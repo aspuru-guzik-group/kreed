@@ -2,6 +2,7 @@ import dgl
 import dgl.function as fn
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from src.diffusion.distributions import centered_mean
 
@@ -105,14 +106,14 @@ class EGNNDynamics(nn.Module):
 
     def __init__(
         self,
-        d_embed_atom,
+        d_atom_vocab,
         d_hidden,
         n_layers,
     ):
         super().__init__()
 
-        self.embed_atom = nn.Embedding(100, d_embed_atom)
-        self.lin_hid = nn.Linear(2 + 3 + d_embed_atom, d_hidden)
+        self.d_atom_vocab = d_atom_vocab
+        self.lin_hid = nn.Linear(2 + 3 + d_atom_vocab, d_hidden)
 
         self.egnn_layers = nn.ModuleList([
             EGNNConv(in_size=d_hidden, hidden_size=d_hidden, out_size=d_hidden, edge_feat_size=1)
@@ -123,7 +124,7 @@ class EGNNDynamics(nn.Module):
         xyz = G.ndata["xyz"]
         h = torch.cat(
             [
-                self.embed_atom(G.ndata["atom_nums"]),
+                F.one_hot(G.ndata["atom_nums"], num_classes=self.d_atom_vocab),
                 dgl.broadcast_nodes(G, t).float(),
                 G.ndata["abs_mask"].unsqueeze(-1).float(),
                 G.ndata["abs_xyz"],

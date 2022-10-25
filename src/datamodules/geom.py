@@ -1,12 +1,21 @@
 import pathlib
 
 import dgl
+import numpy as np
 import pytorch_lightning as pl
 import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
+import src.diffusion.distributions as dists
 from src.kraitchman import rotated_to_principal_axes
+
+# GEOM constants
+MAX_GEOM_ATOMS = 200
+GEOM_ATOMS = torch.tensor([1, 5, 6, 7, 8, 9, 13, 14, 15, 16, 17, 33, 35, 53, 80, 83], dtype=torch.long)
+
+# Cache to optimize connected graph creation
+_MGRID_CACHE = torch.tensor(np.mgrid[0:MAX_GEOM_ATOMS, 0:MAX_GEOM_ATOMS], dtype=torch.long)
 
 
 class GEOMDataset(Dataset):
@@ -16,6 +25,10 @@ class GEOMDataset(Dataset):
 
         self.conformations = conformations
         self.tol = tol
+
+        self.ztoi = torch.full([84], -100, dtype=torch.long)
+        for i, z in enumerate(GEOM_ATOMS):
+            self.ztoi[z] = i
 
     def __len__(self):
         return len(self.conformations)
@@ -27,18 +40,18 @@ class GEOMDataset(Dataset):
         atom_nums = conformer["atom_nums"]
         n = atom_nums.shape[0]
 
-        # create a complete graph
-        nodes = torch.arange(n)
-        u, v = torch.meshgrid(nodes, nodes, indexing="ij")
+        # Create a complete graph
+        u, v = _MGRID_CACHE[:, 0:n, 0:n]
         u, v = u.flatten(), v.flatten()
 
         G = dgl.graph((u, v), num_nodes=n)
         G.ndata["atom_nums"] = atom_nums
         G.ndata["xyz"] = xyz
 
-        # canonicalize conformation
+        # Canonicalize conformation
         G = rotated_to_principal_axes(G)
 
+        # Retrieve unsigned coordinates
         abs_xyz = torch.abs(G.ndata["xyz"])
 
         abs_mask = torch.logical_and(
@@ -50,6 +63,12 @@ class GEOMDataset(Dataset):
 
         G.ndata["abs_xyz"] = abs_xyz
         G.ndata["abs_mask"] = abs_mask
+
+        # Convert atom number to idx
+        G.ndata["atom_nums"] = self.ztoi[G.ndata["atom_nums"]]
+
+        # Center molecule coordinates to 0 CoM subspace
+        G.ndata["xyz"] = dists.centered_mean(G, G.ndata["xyz"])
 
         return G
 
@@ -87,6 +106,10 @@ class GEOMDatamodule(pl.LightningDataModule):
             conformations = sum(conformations, [])  # flattens the 2D list
             datasets[n] = GEOMDataset(conformations, tol=tol)
         self.datasets = datasets
+
+    @property
+    def d_atom_vocab(self):
+        return len(GEOM_ATOMS)
 
     def train_dataloader(self):
         return self._loader(split="train", shuffle=True, drop_last=True)
