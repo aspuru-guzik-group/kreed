@@ -141,8 +141,8 @@ class EnEquivariantDiffusionModel(torch.nn.Module):
         G_t = G_T
         for t in range(self.T, 0, -1):
             G_t = self.sample_p_Gtm1_given_Gt(G_t=G_t, t=t, tie_noise=tie_noise)
-            if t in keep_frames:
-                frames[t] = keep_frames
+            if (keep_frames is not None) and (t in keep_frames):
+                frames[t] = G_t
         dists.assert_centered_mean(G_t, G_t.ndata["xyz"])  # sanity check
 
         frames[0] = G_t
