@@ -46,8 +46,9 @@ def main():
     trainer = pl.Trainer(
         callbacks=[checkpointer],
         logger=logger,
-        min_epochs=100,
-        max_epochs=100,
+        log_every_n_steps=1,
+        min_epochs=25,
+        max_epochs=25,
         accelerator=("gpu" if torch.cuda.is_available() else "cpu"),
         devices=1,
         limit_train_batches=5,
