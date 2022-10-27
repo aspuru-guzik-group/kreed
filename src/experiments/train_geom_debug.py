@@ -20,7 +20,7 @@ def main():
     log_dir.mkdir(exist_ok=True)
 
     # Load data
-    datamodule = GEOMDatamodule(
+    geom = GEOMDatamodule(
         seed=100,
         batch_size=10,
         num_workers=4,
@@ -34,7 +34,7 @@ def main():
         n_sample_batches=1,
     )
 
-    # logger = WandbLogger(project="train_geom_debug", log_model=False, save_dir=str(log_dir))
+    logger = WandbLogger(project="train_geom_debug", log_model=False, save_dir=str(log_dir))
 
     checkpointer = ModelCheckpoint(
         dirpath=log_dir,
@@ -45,7 +45,7 @@ def main():
 
     trainer = pl.Trainer(
         callbacks=[checkpointer],
-        logger=False,
+        logger=logger,
         min_epochs=100,
         max_epochs=100,
         accelerator=("gpu" if torch.cuda.is_available() else "cpu"),
@@ -56,8 +56,8 @@ def main():
         deterministic=True,
     )
 
-    trainer.fit(model=model, datamodule=datamodule)
-    trainer.test(model=model, datamodule=datamodule)
+    trainer.fit(model=model, datamodule=geom)
+    trainer.test(model=model, datamodule=geom)
 
     wandb.finish()
 

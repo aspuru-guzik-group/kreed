@@ -1,7 +1,6 @@
 import pathlib
 
 import dgl
-import numpy as np
 import pytorch_lightning as pl
 import torch
 from sklearn.model_selection import train_test_split
@@ -15,7 +14,12 @@ MAX_GEOM_ATOMS = 200
 GEOM_ATOMS = torch.tensor([1, 5, 6, 7, 8, 9, 13, 14, 15, 16, 17, 33, 35, 53, 80, 83], dtype=torch.long)
 
 # Cache to optimize connected graph creation
-_MGRID_CACHE = torch.tensor(np.mgrid[0:MAX_GEOM_ATOMS, 0:MAX_GEOM_ATOMS], dtype=torch.long)
+_EDGE_CACHE = []
+for i in range(MAX_GEOM_ATOMS):
+    for j in range(i):
+        _EDGE_CACHE.append([i, j])
+        _EDGE_CACHE.append([j, i])
+_EDGE_CACHE = torch.tensor(_EDGE_CACHE, dtype=torch.long)
 
 
 class GEOMDataset(Dataset):
@@ -41,8 +45,8 @@ class GEOMDataset(Dataset):
         n = atom_nums.shape[0]
 
         # Create a complete graph
-        u, v = _MGRID_CACHE[:, 0:n, 0:n]
-        u, v = u.flatten(), v.flatten()
+        edges = _EDGE_CACHE[:(n * (n - 1)), :]
+        u, v = edges[:, 0], edges[:, 1]
 
         G = dgl.graph((u, v), num_nodes=n)
         G.ndata["atom_nums"] = atom_nums
