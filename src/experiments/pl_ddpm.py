@@ -44,7 +44,7 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
 
         self.ema = torch_ema.ExponentialMovingAverage(self.edm.parameters(), decay=ema_decay)
 
-        self.grad_norm_queue = collections.deque([3000], maxlen=50)
+        self.grad_norm_queue = collections.deque([3000, 3000], maxlen=50)
 
     def configure_optimizers(self):
         return torch.optim.Adam(params=self.edm.parameters(), lr=self.hparams.lr)
@@ -60,7 +60,7 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
         max_norm = 1.5 * statistics.mean(self.grad_norm_queue) + 2 * statistics.stdev(self.grad_norm_queue)
         self.log("max_grad_norm", max_norm)
 
-        grad_norm = torch.nn.utils.clip_grad_norm(self.edm.parameters(), max_norm=max_norm, norm_type=2.0).item()
+        grad_norm = torch.nn.utils.clip_grad_norm_(self.edm.parameters(), max_norm=max_norm, norm_type=2.0).item()
         grad_norm = min(grad_norm, max_norm)
         self.grad_norm_queue.append(grad_norm)
 
@@ -84,12 +84,12 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
             return nll
 
     def _step(self, G, split):
-        nll = self.edm(G=G)
+        nll = self.edm(G).mean()
         self.log(f"{split}_nll", nll, batch_size=G.batch_size)
         return nll
 
     def _sample(self, G_init, split):
-        G_sample = self.edm.sample_p_G0(G_init=G_init)
+        # G_sample = self.edm.sample_p_G0(G_init=G_init)
 
 
         pass
