@@ -15,7 +15,7 @@ def SNR(gamma):
     return torch.exp(-gamma)
 
 
-class EnVariationalDiffusion(torch.nn.Module):
+class EnEquivariantDiffusionModel(torch.nn.Module):
     """The E(n) Diffusion Module.
     """
 
@@ -23,9 +23,9 @@ class EnVariationalDiffusion(torch.nn.Module):
         self,
         dynamics,
         timesteps=1000,
-        noise_shape="learned",
-        noise_precision=1e-4,
-        loss_type="VLB",
+        noise_shape="polynomial_2",
+        noise_precision=0.08,
+        loss_type="L2",
     ):
         super().__init__()
 

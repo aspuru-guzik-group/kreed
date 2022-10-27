@@ -4,11 +4,14 @@ aiosignal==1.2.0
 async-timeout==4.0.2
 attrs==22.1.0
 cachetools==5.2.0
-certifi==2022.9.24
+certifi @ file:///croot/certifi_1665076670883/work/certifi
 charset-normalizer==2.1.1
 click==8.1.3
+contourpy==1.0.5
+cycler==0.11.0
 dgl==0.9.1
 docker-pycreds==0.4.0
+fonttools==4.37.4
 frozenlist==1.3.1
 fsspec==2022.8.2
 gitdb==4.0.9
@@ -19,8 +22,10 @@ grpcio==1.49.1
 idna==3.4
 importlib-metadata==4.12.0
 joblib==1.2.0
+kiwisolver==1.4.4
 Markdown==3.4.1
 MarkupSafe==2.1.1
+matplotlib==3.6.1
 multidict==6.0.2
 networkx==2.8.6
 numpy==1.23.3
@@ -35,6 +40,7 @@ pyasn1==0.4.8
 pyasn1-modules==0.2.8
 pyDeprecate==0.3.2
 pyparsing==3.0.9
+python-dateutil==2.8.2
 pytorch-lightning==1.7.7
 PyYAML==6.0
 rdkit==2022.3.5
@@ -53,6 +59,7 @@ tensorboard-data-server==0.6.1
 tensorboard-plugin-wit==1.8.1
 threadpoolctl==3.1.0
 torch==1.12.1
+torch-ema==0.3
 torchmetrics==0.9.3
 tqdm==4.64.1
 typing_extensions==4.3.0
