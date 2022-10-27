@@ -90,7 +90,7 @@ class EGNNConv(nn.Module):
 
             # get coordinate diff & radial features
             graph.apply_edges(fn.u_sub_v("x", "x", "x_diff"))
-            graph.edata["radial"] = (graph.edata["x_diff"].square().sum(dim=1).unsqueeze(-1))
+            graph.edata["radial"] = graph.edata["x_diff"].square().sum(dim=1).unsqueeze(-1)
 
             # normalize coordinate difference
             graph.edata["x_diff"] = graph.edata["x_diff"] / (graph.edata["radial"].sqrt() + 1.0)
