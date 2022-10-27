@@ -22,29 +22,32 @@ class EGNNConv(nn.Module):
         self.hidden_size = hidden_size
         self.out_size = out_size
         self.edge_feat_size = edge_feat_size
+
         act_fn = nn.SiLU()
 
-        # \phi_e
-        self.edge_mlp = nn.Sequential(
-            # +1 for the radial feature: ||x_i - x_j||^2
-            nn.Linear(in_size * 2 + edge_feat_size + 1, hidden_size),
-            act_fn,
-            nn.Linear(hidden_size, hidden_size),
-            act_fn,
-        )
+        if out_size > 0:  # no hidden features outputted if out_size = 0
 
-        # \phi_inf
-        self.att_mlp = nn.Sequential(
-            nn.Linear(hidden_size, 1),
-            nn.Sigmoid(),
-        )
+            # \phi_e
+            self.edge_mlp = nn.Sequential(
+                # +1 for the radial feature: ||x_i - x_j||^2
+                nn.Linear(in_size * 2 + edge_feat_size + 1, hidden_size),
+                act_fn,
+                nn.Linear(hidden_size, hidden_size),
+                act_fn,
+            )
 
-        # \phi_h
-        self.node_mlp = nn.Sequential(
-            nn.Linear(in_size + hidden_size, hidden_size),
-            act_fn,
-            nn.Linear(hidden_size, out_size),
-        )
+            # \phi_inf
+            self.att_mlp = nn.Sequential(
+                nn.Linear(hidden_size, 1),
+                nn.Sigmoid(),
+            )
+
+            # \phi_h
+            self.node_mlp = nn.Sequential(
+                nn.Linear(in_size + hidden_size, hidden_size),
+                act_fn,
+                nn.Linear(hidden_size, out_size),
+            )
 
         # \phi_x
         self.coord_mlp = nn.Sequential(
@@ -63,12 +66,14 @@ class EGNNConv(nn.Module):
             f = f + [edges.data["a"]]
         f = torch.cat(f, dim=-1)
 
-        msg_h = self.edge_mlp(f)
-        msg_h = self.att_mlp(msg_h) * msg_h
+        msg = dict()
+        msg["msg_x"] = self.coord_mlp(f) * edges.data["x_diff"]
 
-        msg_x = self.coord_mlp(f) * edges.data["x_diff"]
+        if self.out_size > 0:
+            msg_h = self.edge_mlp(f)
+            msg["msg_h"] = self.att_mlp(msg_h) * msg_h
 
-        return {"msg_x": msg_x, "msg_h": msg_h}
+        return msg
 
     def forward(self, graph, node_feat, coord_feat, edge_feat=None):
         with graph.local_scope():
@@ -92,12 +97,15 @@ class EGNNConv(nn.Module):
             graph.apply_edges(self.message)
 
             graph.update_all(fn.copy_e("msg_x", "m"), fn.sum("m", "x_neigh"))
-            graph.update_all(fn.copy_e("msg_h", "m"), fn.sum("m", "h_neigh"))
-
-            h_neigh, x_neigh = graph.ndata["h_neigh"], graph.ndata["x_neigh"]
-
-            h = node_feat + self.node_mlp(torch.cat([node_feat, h_neigh], dim=-1))
+            x_neigh = graph.ndata["x_neigh"]
             x = coord_feat + x_neigh
+
+            if self.out_size > 0:
+                graph.update_all(fn.copy_e("msg_h", "m"), fn.sum("m", "h_neigh"))
+                h_neigh = graph.ndata["h_neigh"]
+                h = node_feat + self.node_mlp(torch.cat([node_feat, h_neigh], dim=-1))
+            else:
+                h = None
 
             return h, x
 
@@ -116,8 +124,13 @@ class EGNNDynamics(nn.Module):
         self.lin_hid = nn.Linear(2 + 3 + d_atom_vocab, d_hidden)
 
         self.egnn_layers = nn.ModuleList([
-            EGNNConv(in_size=d_hidden, hidden_size=d_hidden, out_size=d_hidden, edge_feat_size=1)
-            for _ in range(n_layers)
+            EGNNConv(
+                in_size=d_hidden,
+                hidden_size=d_hidden,
+                out_size=(0 if (i + 1 == n_layers) else d_hidden),
+                edge_feat_size=1
+            )
+            for i in range(n_layers)
         ])
 
     def forward(self, G, t):
