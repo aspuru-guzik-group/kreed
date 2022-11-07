@@ -7,6 +7,15 @@ import torch_ema
 
 from src.diffusion import EGNNDynamics, EnEquivariantDiffusionModel
 
+from src.datamodules.geom import GEOM_ATOMS
+import dgl
+
+import wandb
+from src.utils import make_html
+
+# from ase import Atoms
+# from ase.io import write
+# from wandb import Molecule
 
 class PlEnEquivariantDiffusionModel(pl.LightningModule):
 
@@ -46,11 +55,16 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
 
         self.grad_norm_queue = collections.deque([3000, 3000], maxlen=50)
 
+        self.on_correct_device = False
+
     def configure_optimizers(self):
         return torch.optim.Adam(params=self.edm.parameters(), lr=self.hparams.lr)
 
     def optimizer_step(self, *args, **kwargs):
         super().optimizer_step(*args, **kwargs)
+        if not self.on_correct_device:
+            self.ema.to(self.device)
+            self.on_correct_device = True
         self.ema.update()
 
     def configure_gradient_clipping(self, optimizer, optimizer_idx, gradient_clip_val=None, gradient_clip_algorithm=None):
@@ -89,7 +103,12 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
         return nll
 
     def _sample(self, G_init, split):
-        # G_sample = self.edm.sample_p_G0(G_init=G_init)
+        G_sample = self.edm.sample_p_G0(G_init=G_init)
+        mol = dgl.unbatch(G_sample)[0]
+        html = make_html(mol)
+        wandb.log({f"{split}_molecule": wandb.Html(html)})
 
-
-        pass
+        
+        # atoms = Atoms(numbers=Z, positions=XYZ)
+        # write('atoms.pdb', atoms)
+        # wandb.log({f"{split}_atoms":Molecule('atoms.pdb')})
