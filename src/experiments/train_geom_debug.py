@@ -31,14 +31,14 @@ def main():
         d_egnn_hidden=32,
         n_egnn_layers=2,
         timesteps=20,
-        n_sample_batches=1,
+        n_sample_metric_batches=1,
     )
 
     logger = WandbLogger(project="train_geom_debug", log_model=False, save_dir=str(log_dir))
 
     checkpointer = ModelCheckpoint(
         dirpath=log_dir,
-        monitor="val_nll",
+        monitor="val/nll",
         save_top_k=1,
         save_last=True,
     )

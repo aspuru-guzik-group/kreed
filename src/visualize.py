@@ -1,21 +1,10 @@
-import rdkit
 from rdkit.Chem import GetPeriodicTable
-import torch
-
-from src.datamodules.geom import GEOM_ATOMS
 
 PTABLE = GetPeriodicTable()
 
-def make_html(dgl_graph):
-  Z = GEOM_ATOMS[dgl_graph.ndata['atom_nums']]
-  XYZ = dgl_graph.ndata['xyz'].cpu().numpy()
-  xyzfile = ""
-  xyzfile += f"{len(Z)}\n\n"
-  for atomic_num, xyz in zip(Z, XYZ):
-      x, y, z = xyz
-      xyzfile += f"{PTABLE.GetElementSymbol(int(atomic_num))} {x} {y} {z}\n"
-
-  js = """<div id="3dmolviewer" style="position: relative; width: 100%%; height: 100%%"></div>
+JS_TEMPLATE = (
+"""<div><p>GEOM ID: %d</p></div>
+<div id="3dmolviewer" style="position: relative; width: 100%%; height: 100%%"></div>
 
 <script>
 var loadScriptAsync = function(uri){
@@ -49,6 +38,13 @@ viewer.setStyle({"sphere": {"scale": 0.5}});
 viewer.zoomTo();
 viewer.render();
 });
-</script>""" % repr(xyzfile)
+</script>"""
+)
 
-  return js
+
+def html_render(geom_id, atom_nums, coords):
+    xyzfile = f"{atom_nums.shape[0]}\n\n"
+    for a, xyz in zip(atom_nums, coords):
+        x, y, z = xyz
+        xyzfile += f"{PTABLE.GetElementSymbol(int(a))} {x} {y} {z}\n"
+    return JS_TEMPLATE % (geom_id, repr(xyzfile))

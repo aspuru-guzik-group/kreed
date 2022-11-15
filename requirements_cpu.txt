@@ -11,6 +11,7 @@ contourpy==1.0.5
 cycler==0.11.0
 dgl==0.9.1
 docker-pycreds==0.4.0
+fire==0.4.0
 fonttools==4.37.4
 frozenlist==1.3.1
 fsspec==2022.8.2
@@ -23,6 +24,7 @@ idna==3.4
 importlib-metadata==4.12.0
 joblib==1.2.0
 kiwisolver==1.4.4
+lightning-utilities==0.3.0
 Markdown==3.4.1
 MarkupSafe==2.1.1
 matplotlib==3.6.1
@@ -41,7 +43,7 @@ pyasn1-modules==0.2.8
 pyDeprecate==0.3.2
 pyparsing==3.0.9
 python-dateutil==2.8.2
-pytorch-lightning==1.7.7
+pytorch-lightning==1.8.1
 PyYAML==6.0
 rdkit==2022.3.5
 requests==2.28.1
@@ -54,9 +56,11 @@ setproctitle==1.3.2
 shortuuid==1.0.9
 six==1.16.0
 smmap==5.0.0
+spyrmsd==0.5.2
 tensorboard==2.10.1
 tensorboard-data-server==0.6.1
 tensorboard-plugin-wit==1.8.1
+termcolor==2.1.0
 threadpoolctl==3.1.0
 torch==1.12.1
 torch-ema==0.3

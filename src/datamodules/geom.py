@@ -74,6 +74,9 @@ class GEOMDataset(Dataset):
         # Center molecule coordinates to 0 CoM subspace
         G.ndata["xyz"] = dists.centered_mean(G, G.ndata["xyz"])
 
+        # Record GEOM ID
+        G.ndata["id"] = torch.full((n, ), conformer["geom_id"])  # hack to store graph-level data
+
         return G
 
 
