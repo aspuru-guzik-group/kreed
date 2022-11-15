@@ -7,6 +7,8 @@ import spyrmsd.rmsd
 import torch
 import torch_ema
 import wandb
+import xyz2mol
+from rdkit import Chem
 
 from src.datamodules.geom import GEOM_ATOMS
 from src.diffusion import EGNNDynamics, EnEquivariantDiffusionModel
@@ -126,6 +128,14 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
                 atomicn2=atom_nums,
                 minimize=True
             )
+
+            mols = xyz2mol.xyz2mol(
+                atoms=atom_nums.tolist(),
+                coordinates=coords_pred.tolist(),
+                embed_chiral=False,
+            )
+
+            stability += (1.0 if mols else 0.0)
 
         rmsd = rmsd / G.batch_size
         stability = stability / G.batch_size
