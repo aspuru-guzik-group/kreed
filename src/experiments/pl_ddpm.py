@@ -140,8 +140,8 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
         rmsd = rmsd / G.batch_size
         stability = stability / G.batch_size
 
-        self.log("rmsd", rmsd, batch_size=G.batch_size)
-        self.log("stability", stability, batch_size=G.batch_size)
+        self.log(f"{split}/rmsd", rmsd, batch_size=G.batch_size)
+        self.log(f"{split}/stability", stability, batch_size=G.batch_size)
 
         # from ase import Atoms
         # from ase.io import write
