@@ -2,11 +2,13 @@ import dgl
 import torch
 from rdkit.Chem.rdchem import GetPeriodicTable
 
+from src.eigh import StablePowerIteration
+
 PTABLE = GetPeriodicTable()
 ATOM_MASSES = torch.tensor([0] + [PTABLE.GetMostCommonIsotopeMass(z) for z in range(1, 119)], dtype=torch.float32)
 
 
-def rotated_to_principal_axes(G, stable=False, return_moments=False):
+def rotated_to_principal_axes(G, diffable=False, return_moments=False, n_iter=19):
     with G.local_scope():
         m = ATOM_MASSES[G.ndata["atom_nums"]]
 
@@ -24,12 +26,22 @@ def rotated_to_principal_axes(G, stable=False, return_moments=False):
         G.ndata["P"] = P.view(N, 9)  # flatten to use dgl.sum_nodes()
         P = dgl.sum_nodes(G, "P").view(B, 3, 3)
 
-    if stable:
-        raise NotImplementedError()
-    else:
-        P = P.double()
-        moments, V = torch.linalg.eigh(P)  # diagonalize in double precision
+    with torch.no_grad():
+        moments, V = torch.linalg.eigh(P.double())  # diagonalize in double precision
         moments, V = moments.float(), V.float()
+
+    if diffable:
+        M = P
+        V_diffable = []
+
+        # Numerically stable eigh()
+        for i in range(3):
+            v = V[:, i].unsqueeze(-1)
+            v = StablePowerIteration.apply(M, v, n_iter=n_iter)
+            M = M - torch.bmm(torch.bmm(M, v), v.transpose(-1, -2))
+            V_diffable.append(v)
+
+        V = torch.cat(V_diffable, dim=1)
 
     V_T = dgl.broadcast_nodes(G, V.transpose(-1, -2))
 

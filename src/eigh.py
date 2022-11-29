@@ -1,80 +1,30 @@
-import torch as th
-# from torch.nn.functional import normalize
-import torch.nn as nn
-from time import sleep
-import time
-'''
-This file contains all the custom pytorch operator.
-'''
+import torch
+import torch.linalg as LA
 
 
-class power_iteration_unstable(th.autograd.Function):
+class StablePowerIteration(torch.autograd.Function):
+
     @staticmethod
-    def forward(ctx, M, v_k, num_iter=19):
-        '''
-        :param ctx: used to save meterials for backward.
-        :param M: n by n matrix.
-        :param v_k: initial guess of leading vector.
-        :return: v_k1 leading vector.
-        '''
-        vk_list = []
-        vk_list.append(v_k)
-        ctx.num_iter = num_iter
-        for _ in range(int(ctx.num_iter)):
-            v_k = M.mm(v_k)
-            v_k /= th.norm(v_k).clamp(min=1.e-5)
-            vk_list.append(v_k)
-
-        ctx.save_for_backward(M, *vk_list)
-        return v_k
+    def forward(ctx, M, v, n_iter=19):
+        ctx.n_iter = n_iter
+        ctx.save_for_backward(M, v)
+        return v
 
     @staticmethod
     def backward(ctx, grad_output):
-        M = ctx.saved_tensors[0]
-        vk_list = ctx.saved_tensors[1:]
-        dL_dvk1 = grad_output
-        dL_dM = 0
-        for i in range(1, ctx.num_iter + 1):
-            v_k1 = vk_list[-i]
-            v_k = vk_list[-i - 1]
-            mid = calc_mid(M, v_k, v_k1, dL_dvk1)
-            dL_dM += mid.mm(th.t(v_k))
-            dL_dvk1 = M.mm(mid)
-        return dL_dM, dL_dvk1
+        M, v = ctx.saved_tensors  # (B 3 3) (B 3 1)
+        dL_dv = grad_output
+        I = torch.eye(M.shape[-1]).to(M).unsqueeze(0).repeat(M.shape[0], 1, 1)  # (B 3 3)
 
+        num = I - torch.bmm(v, torch.transpose(v, -1, -2))
+        denom = LA.norm(torch.bmm(M, v), dim=(1, 2), keepdim=True).clamp(min=1e-5)
+        ak = num / denom
 
-def calc_mid(M, v_k, v_k1, dL_dvk1):
-    I = th.eye(M.shape[-1], out=th.empty_like(M))
-    mid = (I - v_k1.mm(th.t(v_k1)))/th.norm(M.mm(v_k)).clamp(min=1.e-5)
-    mid = mid.mm(dL_dvk1)
-    return mid
-
-
-class power_iteration_once(th.autograd.Function):
-    @staticmethod
-    def forward(ctx, M, v_k, num_iter=19):
-        '''
-        :param ctx: used to save meterials for backward.
-        :param M: n by n matrix.
-        :param v_k: initial guess of leading vector.
-        :return: v_k1 leading vector.
-        '''
-        ctx.num_iter = num_iter
-        ctx.save_for_backward(M, v_k)
-        return v_k
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        M, v_k = ctx.saved_tensors
-        dL_dvk = grad_output
-        I = th.eye(M.shape[-1], out=th.empty_like(M))
-        numerator = I - v_k.mm(th.t(v_k))
-        denominator = th.norm(M.mm(v_k)).clamp(min=1.e-5)
-        ak = numerator / denominator
         term1 = ak
-        q = M / denominator
-        for i in range(1, ctx.num_iter + 1):
-            ak = q.mm(ak)
+        q = M / denom
+        for i in range(1, ctx.n_iter + 1):
+            ak = torch.bmm(q, ak)
             term1 += ak
-        dL_dM = th.mm(term1.mm(dL_dvk), v_k.t())
+        dL_dM = torch.bmm(torch.bmm(term1, dL_dv), torch.transpose(v, -1, -2))
+
         return dL_dM, ak
