@@ -6,7 +6,7 @@ import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
-import src.diffusion.distributions as dists
+import src.modules.distributions as dists
 from src.kraitchman import rotated_to_principal_axes
 
 

@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 from tqdm import trange
 
-from src.diffusion.schedules import LearnedNoiseSchedule, FixedNoiseSchedule
+from src.modules.schedules import LearnedNoiseSchedule, FixedNoiseSchedule
 
 
 def visualize_schedules():

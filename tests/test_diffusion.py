@@ -1,8 +1,8 @@
 import torch
 
 from src.datamodules import GEOMDatamodule
-from src.diffusion import EGNNDynamics, EnEquivariantDDPM
-from src.diffusion.distributions import assert_centered_mean
+from src.modules import EGNNDynamics, EnEquivariantDDPM
+from src.modules.distributions import assert_centered_mean
 
 
 def test_diffusion():
