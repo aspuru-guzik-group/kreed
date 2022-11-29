@@ -40,6 +40,7 @@ def train_ddpm(config: TrainEnEquivariantDDPMConfig):
         clip_grad_norm=cfg.clip_grad_norm,
         n_visualize_samples=cfg.n_visualize_samples,
         n_sample_metric_batches=cfg.n_sample_metric_batches,
+        guidance_scales=cfg.guidance_scales,
     )
 
     if cfg.wandb:

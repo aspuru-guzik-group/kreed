@@ -9,8 +9,8 @@ import torch_ema
 import wandb
 import xyz2mol
 
-from src.modules import EGNNDynamics, EnEquivariantDDPM
 from src.diffusion.configs import EnEquivariantDDPMConfig
+from src.modules import EGNNDynamics, EnEquivariantDDPM, KraitchmanClassifier
 from src.visualize import html_render
 
 
@@ -25,10 +25,12 @@ class LitEnEquivariantDDPM(pl.LightningModule):
         clip_grad_norm,
         n_visualize_samples,
         n_sample_metric_batches,
+        guidance_scales,
     ):
         super().__init__()
 
         self.save_hyperparameters()
+        self.config = config
 
         dynamics = EGNNDynamics(
             d_atom_vocab=config.d_egnn_atom_vocab,
@@ -36,12 +38,18 @@ class LitEnEquivariantDDPM(pl.LightningModule):
             n_layers=config.n_egnn_layers,
         )
 
+        if config.clf:
+            classifier = KraitchmanClassifier(scale=config.clf_std, stable=config.clf_stable_pi)
+        else:
+            classifier = None
+
         self.edm = EnEquivariantDDPM(
             dynamics=dynamics,
+            classifier=classifier,
             timesteps=config.timesteps,
             noise_shape=config.noise_shape,
             noise_precision=config.noise_precision,
-            loss_type=loss_type
+            loss_type=loss_type,
         )
 
         self.ema = torch_ema.ExponentialMovingAverage(self.edm.parameters(), decay=ema_decay)
@@ -98,7 +106,12 @@ class LitEnEquivariantDDPM(pl.LightningModule):
         return nll
 
     def _evaluate_samples(self, G, split, n_visualize):
-        G_sample = self.edm.sample_p_G0(G_init=G)
+        for s in self.hparams.guidance_scales:
+            self._evaluate_guided_samples(G=G, split=split, n_visualize=n_visualize, scale=s)
+
+    def _evaluate_guided_samples(self, G, split, n_visualize, scale):
+        folder = f"{split}/samples_scale={scale}"
+        G_sample = self.edm.sample_p_G0(G_init=G, guidance_scale=scale)
 
         rmsd = 0.0
         stability = 0.0
@@ -111,8 +124,8 @@ class LitEnEquivariantDDPM(pl.LightningModule):
 
             if i < n_visualize:
                 wandb.log({
-                    f"{split}/samples/true_{i}": wandb.Html(html_render(geom_id, atom_nums, coords_true)),
-                    f"{split}/samples/pred_{i}": wandb.Html(html_render(geom_id, atom_nums, coords_pred)),
+                    f"{folder}/true_{i}": wandb.Html(html_render(geom_id, atom_nums, coords_true)),
+                    f"{folder}/pred_{i}": wandb.Html(html_render(geom_id, atom_nums, coords_pred)),
                     "epoch": self.current_epoch,
                 })
 
@@ -136,5 +149,5 @@ class LitEnEquivariantDDPM(pl.LightningModule):
         rmsd = rmsd / G.batch_size
         stability = stability / G.batch_size
 
-        self.log(f"{split}/rmsd", rmsd, batch_size=G.batch_size)
-        self.log(f"{split}/stability", stability, batch_size=G.batch_size)
+        self.log(f"{folder}/rmsd", rmsd, batch_size=G.batch_size)
+        self.log(f"{folder}/stability", stability, batch_size=G.batch_size)

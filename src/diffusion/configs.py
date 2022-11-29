@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Literal
 
 import pydantic
 import pydantic_cli
@@ -7,13 +7,29 @@ import pydantic_cli
 class EnEquivariantDDPMConfig(pydantic.BaseModel):
     """Configuration object for the DDPM."""
 
+    # ===========
+    # EGNN Fields
+    # ===========
+
     d_egnn_atom_vocab: int = 16
     d_egnn_hidden: int = 256
     n_egnn_layers: int = 4
 
+    # ===============
+    # Schedule Fields
+    # ===============
+
     timesteps: int = 1000
     noise_shape: str = "polynomial_2"
     noise_precision: float = 0.08
+
+    # =================
+    # Classifier Fields
+    # =================
+
+    clf: bool = True
+    clf_std: float = 1.0
+    clf_stable_pi: bool = True
 
 
 class TrainEnEquivariantDDPMConfig(EnEquivariantDDPMConfig):
@@ -38,13 +54,22 @@ class TrainEnEquivariantDDPMConfig(EnEquivariantDDPMConfig):
     # Training Fields
     # ===============
 
-    loss_type: str = "L2"
+    loss_type: Literal["VLB", "L2"] = "L2"
 
     max_epochs: int = 500
     lr: float = 1e-4
 
     ema_decay: float = 0.999
     clip_grad_norm: bool = True
+
+    # ================
+    # Sampling Fields
+    # ================
+
+    n_visualize_samples: int = 3
+    n_sample_metric_batches: int = 20
+
+    guidance_scales: List[float] = (0, 1.0, 10.0)
 
     # ==============
     # Logging Fields
@@ -55,9 +80,6 @@ class TrainEnEquivariantDDPMConfig(EnEquivariantDDPMConfig):
 
     log_every_n_steps: int = 10
     progress_bar: bool = False
-
-    n_visualize_samples: int = 3
-    n_sample_metric_batches: int = 20
 
     class Config(pydantic_cli.DefaultConfig):
         extra = "forbid"

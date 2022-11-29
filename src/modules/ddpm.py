@@ -23,6 +23,7 @@ class EnEquivariantDDPM(nn.Module):
     def __init__(
         self,
         dynamics,
+        classifier,
         timesteps=1000,
         noise_shape="polynomial_2",
         noise_precision=0.08,
@@ -34,6 +35,7 @@ class EnEquivariantDDPM(nn.Module):
 
         # The network that will predict the denoising.
         self.dynamics = dynamics
+        self.classifier = classifier
 
         self.T = timesteps
         self.loss_type = loss_type
@@ -99,7 +101,7 @@ class EnEquivariantDDPM(nn.Module):
         mu_t, var_t = self.dist_q_Gt_given_Gs(G_s=G_s, s=s, t=t)
         return self.sample_randn_G_like(G_init=G_s, mean=mu_t, var=var_t, tie_noise=False, return_noise=return_noise)
 
-    def sample_p_Gtm1_given_Gt(self, G_t, t: int, tie_noise=False):
+    def sample_p_Gtm1_given_Gt(self, G_t, t: int, tie_noise=False, guidance_scale=0.0):
         """Samples from G_{t-1} ~ p(G_{t-1}|G_t)."""
 
         last_step = (t == 1)
@@ -130,7 +132,7 @@ class EnEquivariantDDPM(nn.Module):
         return self.sample_randn_G_like(G_init=G_t, mean=mean, var=var, tie_noise=tie_noise)
 
     @torch.no_grad()
-    def sample_p_G0(self, G_init, tie_noise=False, keep_frames=None):
+    def sample_p_G0(self, G_init, tie_noise=False, keep_frames=None, guidance_scale=0.0):
         """Draw samples from the generative model."""
 
         G_T = self.sample_randn_G_like(G_init, tie_noise=tie_noise)
@@ -141,7 +143,7 @@ class EnEquivariantDDPM(nn.Module):
         # Iteratively sample p(z_s | z_t) for t = 1, ..., T, with s = t - 1.
         G_t = G_T
         for t in range(self.T, 0, -1):
-            G_t = self.sample_p_Gtm1_given_Gt(G_t=G_t, t=t, tie_noise=tie_noise)
+            G_t = self.sample_p_Gtm1_given_Gt(G_t=G_t, t=t, tie_noise=tie_noise, guidance_scale=guidance_scale)
             if (keep_frames is not None) and (t in keep_frames):
                 frames[t] = G_t
         dists.assert_centered_mean(G_t, G_t.ndata["xyz"])  # sanity check
