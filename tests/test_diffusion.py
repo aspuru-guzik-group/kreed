@@ -25,20 +25,16 @@ def test_diffusion():
 
     # Try loss computation
     loss = ddpm(G_0)
-    print(loss)
+    assert loss.shape == (64,)
 
     ddpm.eval()
     loss = ddpm(G_0)
-    print(loss)
+    assert loss.shape == (64,)
 
     # Try sampling
     G_init = G_0.local_var()
     G_init.ndata["xyz"] = torch.zeros_like(G_init.ndata["xyz"])  # safety
-    G_gen, frames = ddpm.sample_p_G0(G_init=G_init, keep_frames=[200])
-    print(G_gen)
+    G_gen, frames = ddpm.sample_p_G0(G_init=G_init, keep_frames=[3, 4])
+    assert len(frames) == 4
 
     assert_centered_mean(G_gen, G_gen.ndata["xyz"])
-
-
-if __name__ == "__main__":
-    test_diffusion()

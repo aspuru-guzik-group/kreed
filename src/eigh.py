@@ -27,4 +27,4 @@ class StablePowerIteration(torch.autograd.Function):
             term1 += ak
         dL_dM = torch.bmm(torch.bmm(term1, dL_dv), torch.transpose(v, -1, -2))
 
-        return dL_dM, ak
+        return dL_dM, ak, None
