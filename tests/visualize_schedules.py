@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
+from tqdm import trange
 
 from src.diffusion.schedules import LearnedNoiseSchedule, FixedNoiseSchedule
 
@@ -12,14 +13,14 @@ def visualize_schedules():
         "polynomial_1": FixedNoiseSchedule("polynomial_1", timesteps=T, precision=1e-5),
         "polynomial_2": FixedNoiseSchedule("polynomial_2", timesteps=T, precision=1e-5),
         "cosine": FixedNoiseSchedule("cosine", timesteps=T, precision=0.008),
-        "learned_init": LearnedNoiseSchedule(),
-        "learned_trained": LearnedNoiseSchedule(),
+        "learned_init": LearnedNoiseSchedule(d_hidden=10),
+        "learned_trained": LearnedNoiseSchedule(d_hidden=10),
     }
 
     gt = schedules["polynomial_2"]
     nn = schedules["learned_trained"]
     optim = torch.optim.SGD(nn.parameters(), lr=1e-2)
-    for _ in range(2000):
+    for _ in trange(200, desc="Training Schedule"):
         nn.zero_grad()
         loss = F.mse_loss(nn.sweep(T)[1], gt.sweep(T)[1])
         loss.backward()
