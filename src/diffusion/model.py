@@ -8,6 +8,7 @@ import torch
 import torch_ema
 import wandb
 import xyz2mol
+from pytorch_lightning.loggers.wandb import WandbLogger
 
 from src.diffusion.configs import EnEquivariantDDPMConfig
 from src.modules import EGNNDynamics, EnEquivariantDDPM, KraitchmanClassifier
@@ -123,11 +124,12 @@ class LitEnEquivariantDDPM(pl.LightningModule):
             coords_pred = G_pred.ndata["xyz"].cpu().numpy()
 
             if i < n_visualize:
-                wandb.log({
-                    f"{folder}/true_{i}": wandb.Html(html_render(geom_id, atom_nums, coords_true)),
-                    f"{folder}/pred_{i}": wandb.Html(html_render(geom_id, atom_nums, coords_pred)),
-                    "epoch": self.current_epoch,
-                })
+                if isinstance(self.logger, WandbLogger):
+                    wandb.log({
+                        f"{folder}/true_{i}": wandb.Html(html_render(geom_id, atom_nums, coords_true)),
+                        f"{folder}/pred_{i}": wandb.Html(html_render(geom_id, atom_nums, coords_pred)),
+                        "epoch": self.current_epoch,
+                    })
 
             # Compute sample metrics
             rmsd += spyrmsd.rmsd.rmsd(
