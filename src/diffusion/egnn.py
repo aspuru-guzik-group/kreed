@@ -137,7 +137,7 @@ class EGNNDynamics(nn.Module):
         xyz = G.ndata["xyz"]
         h = torch.cat(
             [
-                F.one_hot(G.ndata["atom_nums"], num_classes=self.d_atom_vocab),
+                F.one_hot(G.ndata["atom_ids"], num_classes=self.d_atom_vocab),
                 dgl.broadcast_nodes(G, t).float(),
                 G.ndata["abs_mask"].unsqueeze(-1).float(),
                 G.ndata["abs_xyz"],

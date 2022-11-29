@@ -8,60 +8,56 @@ import torch
 import torch_ema
 import wandb
 import xyz2mol
-from rdkit import Chem
 
-from src.datamodules.geom import GEOM_ATOMS
-from src.diffusion import EGNNDynamics, EnEquivariantDiffusionModel
+from src.diffusion import EGNNDynamics, EnEquivariantDDPM
+from src.experiments.configs import EnEquivariantDDPMConfig
 from src.visualize import html_render
 
 
-class PlEnEquivariantDiffusionModel(pl.LightningModule):
+class LitEnEquivariantDDPM(pl.LightningModule):
 
     def __init__(
         self,
-        d_egnn_atom_vocab=16,
-        d_egnn_hidden=256,
-        n_egnn_layers=4,
-        timesteps=1000,
-        noise_shape="polynomial_2",
-        noise_precision=0.08,
-        loss_type="L2",
-        lr=1e-4,
-        ema_decay=0.999,
-        clip_grad_norm=True,
-        n_visualize_samples=3,
-        n_sample_metric_batches=20,
+        config: EnEquivariantDDPMConfig,
+        loss_type,
+        lr,
+        ema_decay,
+        clip_grad_norm,
+        n_visualize_samples,
+        n_sample_metric_batches,
     ):
         super().__init__()
 
         self.save_hyperparameters()
 
         dynamics = EGNNDynamics(
-            d_atom_vocab=d_egnn_atom_vocab,
-            d_hidden=d_egnn_hidden,
-            n_layers=n_egnn_layers,
+            d_atom_vocab=config.d_egnn_atom_vocab,
+            d_hidden=config.d_egnn_hidden,
+            n_layers=config.n_egnn_layers,
         )
 
-        self.edm = EnEquivariantDiffusionModel(
+        self.edm = EnEquivariantDDPM(
             dynamics=dynamics,
-            timesteps=timesteps,
-            noise_shape=noise_shape,
-            noise_precision=noise_precision,
+            timesteps=config.timesteps,
+            noise_shape=config.noise_shape,
+            noise_precision=config.noise_precision,
             loss_type=loss_type
         )
 
         self.ema = torch_ema.ExponentialMovingAverage(self.edm.parameters(), decay=ema_decay)
+        self.ema_moved_to_device = False
 
         self.grad_norm_queue = collections.deque([3000, 3000], maxlen=50)
-
-    def setup(self, stage):
-        self.ema.to(self.device)
 
     def configure_optimizers(self):
         return torch.optim.Adam(params=self.edm.parameters(), lr=self.hparams.lr)
 
     def optimizer_step(self, *args, **kwargs):
         super().optimizer_step(*args, **kwargs)
+
+        if not self.ema_moved_to_device:
+            self.ema.to(self.device)
+            self.ema_moved_to_device = True
         self.ema.update()
 
     def configure_gradient_clipping(self, optimizer, optimizer_idx, gradient_clip_val=None, gradient_clip_algorithm=None):
@@ -76,24 +72,24 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
         self.grad_norm_queue.append(grad_norm)
 
     def training_step(self, batch, batch_idx):
-        nll = self._step(batch, "train")
+        nll = self._step(batch, split="train")
         if batch_idx < self.hparams.n_sample_metric_batches:
-            self._visualize_and_check_samples(batch, "train", n_visualize=0)
+            self._evaluate_samples(batch, split="train", n_visualize=0)
         return nll
 
     def validation_step(self, batch, batch_idx):
         with self.ema.average_parameters():
-            nll = self._step(batch, "val")
+            nll = self._step(batch, split="val")
             if batch_idx < self.hparams.n_sample_metric_batches:
                 n_visualize = self.hparams.n_visualize_samples if (batch_idx == 0) else 0
-                self._visualize_and_check_samples(batch, "val", n_visualize=n_visualize)
+                self._evaluate_samples(batch, split="val", n_visualize=n_visualize)
             return nll
 
     def test_step(self, batch, batch_idx):
         with self.ema.average_parameters():
-            nll = self._step(batch, "test")
+            nll = self._step(batch, split="test")
             n_visualize = self.hparams.n_visualize_samples if (batch_idx == 0) else 0
-            self._visualize_and_check_samples(batch, "test", n_visualize=n_visualize)
+            self._evaluate_samples(batch, split="test", n_visualize=n_visualize)
             return nll
 
     def _step(self, G, split):
@@ -101,7 +97,7 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
         self.log(f"{split}/nll", nll, batch_size=G.batch_size)
         return nll
 
-    def _visualize_and_check_samples(self, G, split, n_visualize):
+    def _evaluate_samples(self, G, split, n_visualize):
         G_sample = self.edm.sample_p_G0(G_init=G)
 
         rmsd = 0.0
@@ -109,7 +105,7 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
 
         for i, (G_true, G_pred) in enumerate(zip(dgl.unbatch(G), dgl.unbatch(G_sample))):
             geom_id = G_true.ndata["id"][0].item()
-            atom_nums = GEOM_ATOMS[G_true.ndata["atom_nums"]].cpu().numpy()
+            atom_nums = G_true.ndata["atom_nums"].cpu().numpy()
             coords_true = G_true.ndata["xyz"].cpu().numpy()
             coords_pred = G_pred.ndata["xyz"].cpu().numpy()
 
@@ -142,10 +138,3 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
 
         self.log(f"{split}/rmsd", rmsd, batch_size=G.batch_size)
         self.log(f"{split}/stability", stability, batch_size=G.batch_size)
-
-        # from ase import Atoms
-        # from ase.io import write
-        # from wandb import Molecule
-        # atoms = Atoms(numbers=Z, positions=XYZ)
-        # write('atoms.pdb', atoms)
-        # wandb.log({f"{split}_atoms":Molecule('atoms.pdb')})

@@ -9,17 +9,42 @@ from torch.utils.data import Dataset
 import src.diffusion.distributions as dists
 from src.kraitchman import rotated_to_principal_axes
 
+
+# ================================================================================================ #
+#                                              Caches                                              #
+# ================================================================================================ #
+
 # GEOM constants
-MAX_GEOM_ATOMS = 200
-GEOM_ATOMS = torch.tensor([1, 5, 6, 7, 8, 9, 13, 14, 15, 16, 17, 33, 35, 53, 80, 83], dtype=torch.long)
+
+def _build_atom_map_cache():
+    geom_atoms = torch.tensor([1, 5, 6, 7, 8, 9, 13, 14, 15, 16, 17, 33, 35, 53, 80, 83], dtype=torch.long)
+
+    ztoi = torch.full([84], -100, dtype=torch.long)
+    for i, z in enumerate(geom_atoms):
+        ztoi[z] = i
+    return ztoi
+
+
+_GEOM_ATOMS_ZTOI = _build_atom_map_cache()
+
 
 # Cache to optimize connected graph creation
-_EDGE_CACHE = []
-for i in range(MAX_GEOM_ATOMS):
-    for j in range(i):
-        _EDGE_CACHE.append([i, j])
-        _EDGE_CACHE.append([j, i])
-_EDGE_CACHE = torch.tensor(_EDGE_CACHE, dtype=torch.long)
+
+def _build_edge_cache(max_nodes):
+    cache = []
+    for i in range(max_nodes):
+        for j in range(i):
+            cache.append([i, j])
+            cache.append([j, i])
+    return torch.tensor(cache, dtype=torch.long)
+
+
+_EDGE_CACHE = _build_edge_cache(max_nodes=200)
+
+
+# ================================================================================================ #
+#                                         Data Handling                                            #
+# ================================================================================================ #
 
 
 class GEOMDataset(Dataset):
@@ -29,10 +54,6 @@ class GEOMDataset(Dataset):
 
         self.conformations = conformations
         self.tol = tol
-
-        self.ztoi = torch.full([84], -100, dtype=torch.long)
-        for i, z in enumerate(GEOM_ATOMS):
-            self.ztoi[z] = i
 
     def __len__(self):
         return len(self.conformations)
@@ -50,6 +71,7 @@ class GEOMDataset(Dataset):
 
         G = dgl.graph((u, v), num_nodes=n)
         G.ndata["atom_nums"] = atom_nums
+        G.ndata["atom_ids"] = _GEOM_ATOMS_ZTOI[atom_nums]
         G.ndata["xyz"] = xyz
 
         # Canonicalize conformation
@@ -63,19 +85,14 @@ class GEOMDataset(Dataset):
             torch.any(abs_xyz >= self.tol, dim=-1),  # coordinate not too close to axis
         )
 
-        abs_xyz[~abs_mask, :] = 0.0
-
-        G.ndata["abs_xyz"] = abs_xyz
+        G.ndata["abs_xyz"] = torch.where(abs_mask.unsqueeze(-1), abs_xyz, 0.0)
         G.ndata["abs_mask"] = abs_mask
-
-        # Convert atom number to idx
-        G.ndata["atom_nums"] = self.ztoi[G.ndata["atom_nums"]]
 
         # Center molecule coordinates to 0 CoM subspace
         G.ndata["xyz"] = dists.centered_mean(G, G.ndata["xyz"])
 
         # Record GEOM ID
-        G.ndata["id"] = torch.full((n, ), conformer["geom_id"])  # hack to store graph-level data
+        G.ndata["id"] = torch.full((n,), conformer["geom_id"])  # hack to store graph-level data
 
         return G
 
@@ -116,7 +133,7 @@ class GEOMDatamodule(pl.LightningDataModule):
 
     @property
     def d_atom_vocab(self):
-        return len(GEOM_ATOMS)
+        return len(_GEOM_ATOMS_ZTOI)
 
     def train_dataloader(self):
         return self._loader(split="train", shuffle=True, drop_last=True)

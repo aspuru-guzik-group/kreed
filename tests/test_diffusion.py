@@ -1,7 +1,7 @@
 import torch
 
 from src.datamodules import GEOMDatamodule
-from src.diffusion import EGNNDynamics, EnEquivariantDiffusionModel
+from src.diffusion import EGNNDynamics, EnEquivariantDDPM
 from src.diffusion.distributions import assert_centered_mean
 
 
@@ -15,7 +15,7 @@ def test_diffusion():
         n_layers=4,
     )
 
-    ddpm = EnEquivariantDiffusionModel(
+    ddpm = EnEquivariantDDPM(
         dynamics=egnn,
         timesteps=10,
         noise_shape="polynomial_2",

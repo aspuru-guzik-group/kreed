@@ -15,7 +15,7 @@ def SNR(gamma):
     return torch.exp(-gamma)
 
 
-class EnEquivariantDiffusionModel(torch.nn.Module):
+class EnEquivariantDDPM(torch.nn.Module):
     """The E(n) Diffusion Module.
     """
 
