@@ -93,6 +93,8 @@ class EnEquivariantDDPM(nn.Module):
             std = dgl.broadcast_nodes(G, var.sqrt())
             std = torch.broadcast_to(std.unsqueeze(-1), mean.shape)
             G.ndata["xyz"] = mean + std * eps
+
+        dists.assert_centered_mean(G, G.ndata["xyz"])
         return G if not return_noise else (G, eps)
 
     def sample_q_Gt_given_Gs(self, G_s, s, t, return_noise=False):
@@ -133,7 +135,9 @@ class EnEquivariantDDPM(nn.Module):
             w = guidance_scale
             sigma = dgl.broadcast_nodes(G_t, (1.0 - alphas_cumprod_t).sqrt())
             g = self.classifier.grad_log_p_y_given_Gt(G_t=G_t)
+
             mean = mean - (w * sigma * g)
+            mean = dists.centered_mean(G_t, mean)
 
         # Sample next coordinates
         return self.sample_randn_G_like(G_init=G_t, mean=mean, var=var, tie_noise=tie_noise)

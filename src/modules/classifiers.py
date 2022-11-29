@@ -21,6 +21,7 @@ class KraitchmanClassifier(nn.Module):
         G.ndata["abs_xyz"] = torch.where(cond_mask.unsqueeze(-1), G.ndata["xyz"].abs(), torch.nan)
         return G
 
+    @torch.enable_grad()
     def grad_log_p_y_given_Gt(self, G_t):
         G_t = G_t.local_var()
         G_t.ndata["xyz"] = G_t.ndata["xyz"].detach().requires_grad_()
@@ -40,6 +41,4 @@ class KraitchmanClassifier(nn.Module):
             logp = Normal(loc=y_pred, scale=self.scale).log_prob(y_true).sum()
             sum_logps = sum_logps + logp
 
-        sum_logps.backward()
-
-        return G_t.ndata["xyz"].grad
+        return torch.autograd.grad((sum_logps,), (G_t.ndata["xyz"],))[0]
