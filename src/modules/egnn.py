@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import src.modules.distributions as dists
+from src.kraitchman import ATOM_MASSES
 
 
 # Modified from DGL source code:
@@ -121,7 +122,7 @@ class EGNNDynamics(nn.Module):
         super().__init__()
 
         self.d_atom_vocab = d_atom_vocab
-        self.lin_hid = nn.Linear(2 + 3 + d_atom_vocab, d_hidden)
+        self.lin_hid = nn.Linear(6 + d_atom_vocab, d_hidden)
 
         self.egnn_layers = nn.ModuleList([
             EGNNConv(
@@ -133,17 +134,29 @@ class EGNNDynamics(nn.Module):
             for i in range(n_layers)
         ])
 
+    def _featurize_nodes(self, G, t):
+        # Node features
+        atom_ids = F.one_hot(G.ndata["atom_ids"], num_classes=self.d_atom_vocab)
+        atom_masses = ATOM_MASSES[G.ndata["atom_nums"]].to(atom_ids)
+        temb = dgl.broadcast_nodes(G, t).float()
+
+        # Conditioning features
+        cond_mask = G.ndata["abs_mask"].unsqueeze(-1).float()
+        abs_xyz = G.ndata["abs_xyz"]
+
+        features = [
+            atom_ids,
+            atom_masses / 12.0,  # FIXME: the normalization is arbitrary here
+            temb,
+            cond_mask,
+            abs_xyz,
+        ]
+
+        return torch.cat(features, dim=-1)  # (N d_vocab+6)
+
     def forward(self, G, t):
         xyz = G.ndata["xyz"]
-        h = torch.cat(
-            [
-                F.one_hot(G.ndata["atom_ids"], num_classes=self.d_atom_vocab),
-                dgl.broadcast_nodes(G, t).float(),
-                G.ndata["abs_mask"].unsqueeze(-1).float(),
-                G.ndata["abs_xyz"],
-            ],
-            dim=-1
-        )
+        h = self._featurize_nodes(G=G, t=t)
 
         with G.local_scope():
             G.apply_edges(fn.u_sub_v("xyz", "xyz", "xyz_diff"))
