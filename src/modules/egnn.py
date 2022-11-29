@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.modules.distributions import centered_mean
+import src.modules.distributions as dists
 
 
 # Modified from DGL source code:
@@ -153,4 +153,4 @@ class EGNNDynamics(nn.Module):
         for layer in self.egnn_layers:
             h, xyz = layer(G, node_feat=h, coord_feat=xyz, edge_feat=a)
         vel = xyz - G.ndata["xyz"]
-        return centered_mean(G, vel)
+        return dists.centered_mean(G, vel)

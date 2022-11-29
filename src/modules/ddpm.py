@@ -1,7 +1,8 @@
 import dgl
 import numpy as np
 import torch
-from torch.nn import functional as F
+import torch.nn as nn
+import torch.nn.functional as F
 
 import src.modules.distributions as dists
 from src.modules.schedules import LearnedNoiseSchedule, FixedNoiseSchedule
@@ -15,7 +16,7 @@ def SNR(gamma):
     return torch.exp(-gamma)
 
 
-class EnEquivariantDDPM(torch.nn.Module):
+class EnEquivariantDDPM(nn.Module):
     """The E(n) Diffusion Module.
     """
 
