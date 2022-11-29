@@ -135,20 +135,22 @@ class EGNNDynamics(nn.Module):
         ])
 
     def _featurize_nodes(self, G, t):
+        xyz = G.ndata["xyz"]  # for casting
+
         # Node features
-        atom_ids = F.one_hot(G.ndata["atom_ids"], num_classes=self.d_atom_vocab)
-        atom_masses = ATOM_MASSES[G.ndata["atom_nums"]].to(atom_ids)
-        temb = dgl.broadcast_nodes(G, t).float()
+        atom_ids = F.one_hot(G.ndata["atom_ids"], num_classes=self.d_atom_vocab).to(xyz)  # (N d_vocab)
+        atom_masses = ATOM_MASSES[G.ndata["atom_nums"]].to(xyz)  # (N)
+        temb = dgl.broadcast_nodes(G, t).to(xyz)  # (N 1)
 
         # Conditioning features
-        cond_mask = G.ndata["abs_mask"].unsqueeze(-1).float()
-        abs_xyz = G.ndata["abs_xyz"]
+        cond_mask = G.ndata["abs_mask"].to(xyz)  # (N)
+        abs_xyz = G.ndata["abs_xyz"].to(xyz)  # (N 3)
 
         features = [
             atom_ids,
-            atom_masses / 12.0,  # FIXME: the normalization is arbitrary here
+            atom_masses.unsqueeze(-1) / 12.0,  # FIXME: the normalization is arbitrary here
             temb,
-            cond_mask,
+            cond_mask.unsqueeze(-1),
             abs_xyz,
         ]
 
