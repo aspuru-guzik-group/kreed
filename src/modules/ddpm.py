@@ -128,7 +128,14 @@ class EnEquivariantDDPM(nn.Module):
             var = (1.0 - alphas_t) * (1.0 - alphas_cumprod_tm1) / (1 - alphas_cumprod_t)
         var = var.squeeze(-1)
 
-        # sample next coordinates
+        # Classifier guidance (if applicable)
+        if (self.classifier is not None) and (guidance_scale > 0.0):
+            w = guidance_scale
+            sigma = dgl.broadcast_nodes(G_t, (1.0 - alphas_cumprod_t).sqrt())
+            g = self.classifier.grad_log_p_y_given_Gt(G_t=G_t)
+            mean = mean - (w * sigma * g)
+
+        # Sample next coordinates
         return self.sample_randn_G_like(G_init=G_t, mean=mean, var=var, tie_noise=tie_noise)
 
     @torch.no_grad()

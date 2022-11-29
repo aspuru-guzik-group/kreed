@@ -1,7 +1,7 @@
 import torch
 
 from src.datamodules import GEOMDatamodule
-from src.modules import EGNNDynamics, EnEquivariantDDPM
+from src.modules import EGNNDynamics, EnEquivariantDDPM, KraitchmanClassifier
 from src.modules.distributions import assert_centered_mean
 
 
@@ -17,6 +17,7 @@ def test_diffusion():
 
     ddpm = EnEquivariantDDPM(
         dynamics=egnn,
+        classifier=None,
         timesteps=10,
         noise_shape="polynomial_2",
         noise_precision=0.008,
@@ -38,3 +39,17 @@ def test_diffusion():
     assert len(frames) == 4
 
     assert_centered_mean(G_gen, G_gen.ndata["xyz"])
+
+
+def test_classifier():
+    geom = GEOMDatamodule(seed=0, batch_size=64)
+    G_0 = next(iter(geom.train_dataloader()))
+
+    xyz = G_0.ndata["xyz"]
+    xyz_pert = xyz + torch.randn_like(xyz)
+
+    G_corrupt = G_0.local_var()
+    G_corrupt.ndata["xyz"] = xyz_pert
+
+    clf = KraitchmanClassifier(scale=1.0, stable=True)
+    assert clf.grad_log_p_y_given_Gt(G_corrupt).shape == xyz.shape
