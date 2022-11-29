@@ -7,8 +7,8 @@ from pytorch_lightning.callbacks import ModelCheckpoint, ModelSummary
 from pytorch_lightning.loggers import WandbLogger
 
 from src.datamodules import GEOMDatamodule
-from src.experiments.configs import TrainEnEquivariantDDPMConfig
-from src.experiments.model import LitEnEquivariantDDPM
+from src.diffusion.configs import TrainEnEquivariantDDPMConfig
+from src.diffusion.model import LitEnEquivariantDDPM
 
 
 def train_ddpm(config: TrainEnEquivariantDDPMConfig):

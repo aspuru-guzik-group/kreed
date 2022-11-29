@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.diffusion.distributions import centered_mean
+from src.modules.distributions import centered_mean
 
 
 # Modified from DGL source code:

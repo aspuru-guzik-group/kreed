@@ -3,8 +3,8 @@ import numpy as np
 import torch
 from torch.nn import functional as F
 
-import src.diffusion.distributions as dists
-from src.diffusion.schedules import LearnedNoiseSchedule, FixedNoiseSchedule
+import src.modules.distributions as dists
+from src.modules.schedules import LearnedNoiseSchedule, FixedNoiseSchedule
 
 
 def alphas_cumprod(gamma):

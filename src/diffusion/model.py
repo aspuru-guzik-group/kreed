@@ -9,8 +9,8 @@ import torch_ema
 import wandb
 import xyz2mol
 
-from src.diffusion import EGNNDynamics, EnEquivariantDDPM
-from src.experiments.configs import EnEquivariantDDPMConfig
+from src.modules import EGNNDynamics, EnEquivariantDDPM
+from src.diffusion.configs import EnEquivariantDDPMConfig
 from src.visualize import html_render
 
 
