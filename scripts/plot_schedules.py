@@ -6,7 +6,7 @@ from tqdm import trange
 from src.modules.schedules import LearnedNoiseSchedule, FixedNoiseSchedule
 
 
-def visualize_schedules():
+def plot_schedules():
     T = 1000
 
     schedules = {
@@ -20,7 +20,7 @@ def visualize_schedules():
     gt = schedules["polynomial_2"]
     nn = schedules["learned_trained"]
     optim = torch.optim.SGD(nn.parameters(), lr=1e-2)
-    for _ in trange(200, desc="Training Schedule"):
+    for _ in trange(1000, desc="Training Schedule"):
         nn.zero_grad()
         loss = F.mse_loss(nn.sweep(T)[1], gt.sweep(T)[1])
         loss.backward()
@@ -34,9 +34,11 @@ def visualize_schedules():
 
     plt.xlabel(r"$t$")
     plt.ylabel(r"$\bar{\alpha}_t$")
+
     plt.legend()
+    plt.tight_layout()
     plt.show()
 
 
 if __name__ == "__main__":
-    visualize_schedules()
+    plot_schedules()
