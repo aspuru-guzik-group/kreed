@@ -7,12 +7,12 @@ import spyrmsd.rmsd
 import torch
 import torch_ema
 import wandb
-import xyz2mol
 from pytorch_lightning.loggers.wandb import WandbLogger
 
 from src.diffusion.configs import EnEquivariantDDPMConfig
 from src.modules import EGNNDynamics, EnEquivariantDDPM, KraitchmanClassifier
 from src.visualize import html_render
+from src.xyz2mol import xyz2mol
 
 
 class LitEnEquivariantDDPM(pl.LightningModule):
@@ -140,11 +140,14 @@ class LitEnEquivariantDDPM(pl.LightningModule):
                 minimize=True
             )
 
-            mols = xyz2mol.xyz2mol(
-                atoms=atom_nums.tolist(),
-                coordinates=coords_pred.tolist(),
-                embed_chiral=False,
-            )
+            try:
+                mols = xyz2mol(
+                    atoms=atom_nums.tolist(),
+                    coordinates=coords_pred.tolist(),
+                    embed_chiral=False,
+                )
+            except ValueError:
+                mols = False
 
             stability += (1.0 if mols else 0.0)
 

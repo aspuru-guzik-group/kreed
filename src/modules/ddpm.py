@@ -132,11 +132,13 @@ class EnEquivariantDDPM(nn.Module):
 
         # Classifier guidance (if applicable)
         if (self.classifier is not None) and (guidance_scale > 0.0):
-            w = guidance_scale
-            sigma = dgl.broadcast_nodes(G_t, (1.0 - alphas_cumprod_t).sqrt())
-            g = self.classifier.grad_log_p_y_given_Gt(G_t=G_t)
+            G_mean = G_t.local_var()
+            G_mean.ndata["xyz"] = mean
 
-            mean = mean - (w * sigma * g)
+            g = self.classifier.grad_log_p_y_given_Gt(G_t=G_mean)
+            g = g.clip(min=-1.0, max=1.0)
+
+            mean = mean + (guidance_scale * var * g)
             mean = dists.centered_mean(G_t, mean)
 
         # Sample next coordinates
