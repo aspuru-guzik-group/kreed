@@ -20,6 +20,7 @@ def plot_schedules():
     gt = schedules["polynomial_2"]
     nn = schedules["learned_trained"]
     optim = torch.optim.SGD(nn.parameters(), lr=1e-2)
+
     for _ in trange(1000, desc="Training Schedule"):
         nn.zero_grad()
         loss = F.mse_loss(nn.sweep(T)[1], gt.sweep(T)[1])
