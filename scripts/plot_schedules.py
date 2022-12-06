@@ -13,17 +13,17 @@ def plot_schedules():
         "polynomial_1": FixedNoiseSchedule("polynomial_1", timesteps=T, precision=1e-5),
         "polynomial_2": FixedNoiseSchedule("polynomial_2", timesteps=T, precision=1e-5),
         "cosine": FixedNoiseSchedule("cosine", timesteps=T, precision=0.008),
-        "learned_init": LearnedNoiseSchedule(d_hidden=10),
+        "learned_initial": LearnedNoiseSchedule(d_hidden=10),
         "learned_trained": LearnedNoiseSchedule(d_hidden=10),
     }
 
-    gt = schedules["polynomial_2"]
-    nn = schedules["learned_trained"]
-    optim = torch.optim.SGD(nn.parameters(), lr=1e-2)
+    model = schedules["learned_trained"]
+    optim = torch.optim.SGD(model.parameters(), lr=1e-2)
 
+    labels = schedules["polynomial_2"].sweep(T)[1]
     for _ in trange(1000, desc="Training Schedule"):
-        nn.zero_grad()
-        loss = F.mse_loss(nn.sweep(T)[1], gt.sweep(T)[1])
+        model.zero_grad()
+        loss = F.mse_loss(model.sweep(T)[1], labels)
         loss.backward()
         optim.step()
 
