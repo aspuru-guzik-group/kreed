@@ -23,13 +23,15 @@ def train_ddpm(config: TrainEnEquivariantDDPMConfig):
     log_dir.mkdir(exist_ok=True)
 
     # Load data
-    giantmidi = GEOMDatamodule(
+    geom = GEOMDatamodule(
         seed=cfg.seed,
         batch_size=cfg.batch_size,
         split_ratio=cfg.split_ratio,
         num_workers=cfg.num_workers,
         tol=cfg.tol,
     )
+
+    print("Datamodule loaded.")
 
     # Initialize and load model
     ddpm = LitEnEquivariantDDPM(
@@ -42,6 +44,8 @@ def train_ddpm(config: TrainEnEquivariantDDPMConfig):
         n_sample_metric_batches=cfg.n_sample_metric_batches,
         guidance_scales=cfg.guidance_scales,
     )
+
+    print("Model loaded.")
 
     if cfg.wandb:
         project = "train_e(n)_equiv_ddpm" + ("_debug" if cfg.debug else "")
@@ -83,9 +87,12 @@ def train_ddpm(config: TrainEnEquivariantDDPMConfig):
         **debug_kwargs,
     )
 
-    trainer.fit(model=ddpm, datamodule=giantmidi)
-    trainer.validate(model=ddpm, datamodule=giantmidi)
-    trainer.test(model=ddpm, datamodule=giantmidi)
+    print("Trainer loaded.")
+    print("Beginning training...")
+
+    trainer.fit(model=ddpm, datamodule=geom)
+    trainer.validate(model=ddpm, datamodule=geom)
+    trainer.test(model=ddpm, datamodule=geom)
 
     if cfg.wandb:
         wandb.finish()
