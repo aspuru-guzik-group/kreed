@@ -53,7 +53,8 @@ class LitEnEquivariantDDPM(pl.LightningModule):
             loss_type=loss_type,
         )
 
-        self.ema = torch_ema.ExponentialMovingAverage(self.edm.parameters(), decay=ema_decay)
+        trainable_params = [p for p in self.edm.parameters() if p.requires_grad]
+        self.ema = torch_ema.ExponentialMovingAverage(trainable_params, decay=ema_decay)
         self.ema_moved_to_device = False
 
         self.grad_norm_queue = collections.deque([3000, 3000], maxlen=50)

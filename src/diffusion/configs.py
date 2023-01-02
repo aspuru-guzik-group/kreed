@@ -69,7 +69,7 @@ class TrainEnEquivariantDDPMConfig(EnEquivariantDDPMConfig):
     n_visualize_samples: int = 3
     n_sample_metric_batches: int = 20
 
-    guidance_scales: List[float] = (0, 1.0, 10.0)
+    guidance_scales: List[float] = (0,)
 
     # ==============
     # Logging Fields
