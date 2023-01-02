@@ -21,7 +21,7 @@ class EnEquivariantDDPMConfig(pydantic.BaseModel):
 
     timesteps: int = 1000
     noise_shape: str = "polynomial_2"
-    noise_precision: float = 0.08
+    noise_precision: float = 1e-5
 
     # =================
     # Classifier Fields
@@ -59,7 +59,7 @@ class TrainEnEquivariantDDPMConfig(EnEquivariantDDPMConfig):
     max_epochs: int = 500
     lr: float = 1e-4
 
-    ema_decay: float = 0.999
+    ema_decay: float = 0.9999
     clip_grad_norm: bool = True
 
     # ================
