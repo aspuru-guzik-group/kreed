@@ -47,7 +47,7 @@ class TrainEnEquivariantDDPMConfig(EnEquivariantDDPMConfig):
 
     batch_size: int = 64
     split_ratio: List[float] = (0.8, 0.1, 0.1)
-    num_workers: int = 0
+    num_workers: int = 4
     tol: float = -1.0
 
     # ===============

@@ -88,6 +88,7 @@ class GEOMDataset(Dataset):
             torch.any(abs_xyz >= self.tol, dim=-1),  # coordinate not too close to axis
         )
 
+        print(abs_xyz.dtype, G.ndata["xyz"].dtype)
         G.ndata["abs_xyz"] = torch.where(abs_mask.unsqueeze(-1), abs_xyz, 0.0)
         G.ndata["abs_mask"] = abs_mask
 
