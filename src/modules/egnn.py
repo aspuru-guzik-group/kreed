@@ -139,7 +139,7 @@ class EGNNDynamics(nn.Module):
 
         # Node features
         atom_ids = F.one_hot(G.ndata["atom_ids"], num_classes=self.d_atom_vocab).to(xyz)  # (N d_vocab)
-        atom_masses = ATOM_MASSES[G.ndata["atom_nums"]].to(xyz)  # (N)
+        atom_masses = ATOM_MASSES[G.ndata["atom_nums"].cpu()].to(xyz)  # (N)
         temb = dgl.broadcast_nodes(G, t).to(xyz)  # (N 1)
 
         # Conditioning features

@@ -11,7 +11,7 @@ ATOM_MASSES = torch.tensor([0] + [PTABLE.GetMostCommonIsotopeMass(z) for z in ra
 
 def rotated_to_principal_axes(G, stable=False, return_moments=False, n_iter=19):
     with G.local_scope():
-        m = ATOM_MASSES[G.ndata["atom_nums"]]
+        m = ATOM_MASSES[G.ndata["atom_nums"].cpu()].to(G.device)
 
         # Center molecule to center of mass (CoM)
         G.ndata["m"] = m.unsqueeze(-1)
