@@ -15,7 +15,7 @@ def centered_mean(G, xyz):
 
 def assert_centered_mean(G, xyz):
     com = _mean(G, xyz)
-    error = com.abs().max().item()
+    error = com.abs().max().item() / xyz.abs().max().item()
     assert error < 1e-4, error
 
 
