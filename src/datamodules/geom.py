@@ -122,7 +122,8 @@ class GEOMDatamodule(pl.LightningDataModule):
         self.num_workers = num_workers
 
         data_dir = pathlib.Path(__file__).parents[2] / "data" / "geom" / "processed"
-        D = data_dir.glob("*.pt")
+        D = list(data_dir.glob("*.pt"))
+        D.sort()
 
         # Split by molecule
         splits = {"train": None, "val": None, "test": None}
