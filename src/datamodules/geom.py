@@ -1,9 +1,9 @@
 import pathlib
+import random
 
 import dgl
 import pytorch_lightning as pl
 import torch
-import tqdm
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
@@ -56,19 +56,12 @@ class GEOMDataset(Dataset):
         self.paths = paths
         self.tol = tol
 
-        pointers = []
-        for path_id, path in enumerate(tqdm.tqdm(paths, desc="Caching conformer pointers")):
-            conformations = torch.load(path)
-            pointers.extend([(path_id, i) for i in range(len(conformations))])
-        self.pointers = pointers
-
     def __len__(self):
-        return len(self.pointers)
+        return len(self.paths)
 
     def __getitem__(self, idx):
-        path_id, conformer_id = self.pointers[idx]
-        path = self.paths[path_id]
-        conformer = torch.load(path)[conformer_id]
+        path = self.paths[idx]
+        conformer = random.choice(torch.load(path))
 
         xyz = conformer["xyz"]
         atom_nums = conformer["atom_nums"]
