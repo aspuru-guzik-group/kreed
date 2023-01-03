@@ -3,6 +3,7 @@ import pathlib
 import dgl
 import pytorch_lightning as pl
 import torch
+import tqdm
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
@@ -56,7 +57,7 @@ class GEOMDataset(Dataset):
         self.tol = tol
 
         pointers = []
-        for path_id, path in enumerate(paths):
+        for path_id, path in enumerate(tqdm.tqdm(paths, desc="Caching conformer pointers")):
             conformations = torch.load(path)
             pointers.extend([(path_id, i) for i in range(len(conformations))])
         self.pointers = pointers
