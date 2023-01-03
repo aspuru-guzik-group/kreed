@@ -19,14 +19,14 @@ def preprocess_geom(n_conformers):
     save_dir.mkdir(parents=True, exist_ok=True)
 
     geom_smiles = []
-    n_conformations = 0
+    num_conformations = 0
 
     for batch_idx, batch in enumerate(geom_unpacker()):
 
-        for smiles, batch_metdata in batch.items():
+        for smiles, batch_metadata in batch.items():
             smiles_id = len(geom_smiles)
 
-            conformers = list(batch_metdata["conformers"])
+            conformers = list(batch_metadata["conformers"])
             conformers.sort(key=lambda d: d["totalenergy"])
             conformers = conformers[:n_conformers]
 
@@ -44,12 +44,14 @@ def preprocess_geom(n_conformers):
                 })
 
             torch.save(conformer_data, save_dir / f"conformations_{smiles_id:06d}.pt")
+
             geom_smiles.append(smiles)
+            num_conformations += len(conformer_data)
 
     with open(save_dir / "smiles.txt", "w+") as f:
         f.write("\n".join(geom_smiles))
 
-    print(f"Caching {n_conformations} conformations from {len(geom_smiles)} molecules.")
+    print(f"Caching {num_conformations} conformations from {len(geom_smiles)} molecules.")
 
 
 if __name__ == "__main__":

@@ -49,17 +49,25 @@ _EDGE_CACHE = _build_edge_cache(max_nodes=200)
 
 class GEOMDataset(Dataset):
 
-    def __init__(self, conformations, tol):
+    def __init__(self, paths, tol):
         super().__init__()
 
-        self.conformations = conformations
+        self.paths = paths
         self.tol = tol
 
+        pointers = []
+        for path_id, path in enumerate(paths):
+            conformations = torch.load(path)
+            pointers.extend([(path_id, i) for i in range(len(conformations))])
+        self.pointers = pointers
+
     def __len__(self):
-        return len(self.conformations)
+        return len(self.pointers)
 
     def __getitem__(self, idx):
-        conformer = self.conformations[idx]
+        path_id, conformer_id = self.pointers[idx]
+        path = self.paths[path_id]
+        conformer = torch.load(path)[conformer_id]
 
         xyz = conformer["xyz"]
         atom_nums = conformer["atom_nums"]
@@ -114,10 +122,7 @@ class GEOMDatamodule(pl.LightningDataModule):
         self.num_workers = num_workers
 
         data_dir = pathlib.Path(__file__).parents[2] / "data" / "geom" / "processed"
-
-        # This is a 2D ragged list
-        # D[i][j] = j-th conformer for the i-th molecule
-        D = torch.load(data_dir / "conformations.pt")
+        D = data_dir.glob("*.pt")
 
         # Split by molecule
         splits = {"train": None, "val": None, "test": None}
@@ -126,9 +131,8 @@ class GEOMDatamodule(pl.LightningDataModule):
         splits["val"], splits["test"] = train_test_split(D, train_size=val_test_ratio, random_state=(seed + 1))
 
         datasets = {}
-        for n, conformations in splits.items():
-            conformations = sum(conformations, [])  # flattens the 2D list
-            datasets[n] = GEOMDataset(conformations, tol=tol)
+        for split, paths in splits.items():
+            datasets[split] = GEOMDataset(sorted(paths), tol=tol)
         self.datasets = datasets
 
     @property
