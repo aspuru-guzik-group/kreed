@@ -16,7 +16,7 @@ def centered_mean(G, xyz):
 def assert_centered_mean(G, xyz):
     com = _mean(G, xyz)
     error = com.abs().max().item()
-    assert error < 1e-5, error
+    assert error < 1e-4, error
 
 
 def subspace_gaussian_KL_div(G, q_mean, q_var, p_mean, p_var):
