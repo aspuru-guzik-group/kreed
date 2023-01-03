@@ -2,6 +2,7 @@ import pathlib
 import random
 
 import dgl
+import lightning_lite
 import pytorch_lightning as pl
 import torch
 from sklearn.model_selection import train_test_split
@@ -150,4 +151,5 @@ class GEOMDatamodule(pl.LightningDataModule):
             shuffle=shuffle,
             num_workers=self.num_workers,
             drop_last=drop_last,
+            worker_init_fn=lightning_lite.utilities.seed.pl_worker_init_function,
         )
