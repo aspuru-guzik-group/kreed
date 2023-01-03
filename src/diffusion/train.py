@@ -78,6 +78,7 @@ def train_ddpm(config: TrainEnEquivariantDDPMConfig):
     trainer = pl.Trainer(
         accelerator=cfg.accelerator,
         devices=cfg.devices,
+        strategy=cfg.strategy,
         callbacks=callbacks,
         enable_checkpointing=cfg.checkpoint,
         logger=logger,

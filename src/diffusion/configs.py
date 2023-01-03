@@ -1,4 +1,4 @@
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 import pydantic
 import pydantic_cli
@@ -40,6 +40,7 @@ class TrainEnEquivariantDDPMConfig(EnEquivariantDDPMConfig):
 
     accelerator: str = "cpu"
     devices: int = 1
+    strategy: Optional[str] = None
 
     # =================
     # Datamodule Fields
