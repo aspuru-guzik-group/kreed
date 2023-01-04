@@ -7,11 +7,12 @@ from pytorch_lightning.callbacks import ModelCheckpoint, ModelSummary
 from pytorch_lightning.loggers import WandbLogger
 
 from src.datamodules import GEOMDatamodule
-from src.diffusion.configs import TrainEnEquivariantDDPMConfig
+from src.diffusion.configs import TrainEquivariantDDPMConfig
 from src.diffusion.model import LitEnEquivariantDDPM
+from src.diffusion.reflection import LitRefEquivariantDDPM
 
 
-def train_ddpm(config: TrainEnEquivariantDDPMConfig):
+def train_ddpm(config: TrainEquivariantDDPMConfig):
     cfg = config
 
     # Seeding
@@ -29,27 +30,37 @@ def train_ddpm(config: TrainEnEquivariantDDPMConfig):
         split_ratio=cfg.split_ratio,
         num_workers=cfg.num_workers,
         tol=cfg.tol,
-        split=cfg.split,
     )
 
     print("Datamodule loaded.")
 
-    # Initialize and load model
-    ddpm = LitEnEquivariantDDPM(
-        config=cfg,
-        loss_type=cfg.loss_type,
-        lr=cfg.lr,
-        ema_decay=cfg.ema_decay,
-        clip_grad_norm=cfg.clip_grad_norm,
-        n_visualize_samples=cfg.n_visualize_samples,
-        n_sample_metric_batches=cfg.n_sample_metric_batches,
-        guidance_scales=cfg.guidance_scales,
-    )
-
+    if cfg.equivariance == 'rotation':
+        # Initialize and load model
+        ddpm = LitEnEquivariantDDPM(
+            config=cfg,
+            loss_type=cfg.loss_type,
+            lr=cfg.lr,
+            ema_decay=cfg.ema_decay,
+            clip_grad_norm=cfg.clip_grad_norm,
+            n_visualize_samples=cfg.n_visualize_samples,
+            n_sample_metric_batches=cfg.n_sample_metric_batches,
+            guidance_scales=cfg.guidance_scales,
+        )
+    elif cfg.equivariance == 'reflection':
+        # Initialize and load model
+        ddpm = LitRefEquivariantDDPM(
+            config=cfg,
+            loss_type=cfg.loss_type,
+            lr=cfg.lr,
+            ema_decay=cfg.ema_decay,
+            clip_grad_norm=cfg.clip_grad_norm,
+            n_visualize_samples=cfg.n_visualize_samples,
+            n_sample_metric_batches=cfg.n_sample_metric_batches,
+        )
     print("Model loaded.")
 
     if cfg.wandb:
-        project = "train_e(n)_equiv_ddpm" + ("_debug" if cfg.debug else "")
+        project = "train_equiv_ddpm" + ("_debug" if cfg.debug else "")
         logger = WandbLogger(project=project, log_model=True, save_dir=str(log_dir))
         logger.experiment.config.update(dict(cfg))
     else:
@@ -103,4 +114,4 @@ def train_ddpm(config: TrainEnEquivariantDDPMConfig):
 
 
 if __name__ == "__main__":
-    pydantic_cli.run_and_exit(TrainEnEquivariantDDPMConfig, train_ddpm)
+    pydantic_cli.run_and_exit(TrainEquivariantDDPMConfig, train_ddpm)

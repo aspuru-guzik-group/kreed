@@ -4,8 +4,10 @@ import pydantic
 import pydantic_cli
 
 
-class EnEquivariantDDPMConfig(pydantic.BaseModel):
+class EquivariantDDPMConfig(pydantic.BaseModel):
     """Configuration object for the DDPM."""
+
+    equivariance: Literal["rotation", "reflection"] = "rotation"
 
     # ===========
     # EGNN Fields
@@ -32,7 +34,10 @@ class EnEquivariantDDPMConfig(pydantic.BaseModel):
     clf_stable_pi: bool = True
 
 
-class TrainEnEquivariantDDPMConfig(EnEquivariantDDPMConfig):
+    loss_weight: float = 1.0
+
+
+class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     """Configuration object for training the DDPM."""
 
     seed: int = 100
@@ -50,7 +55,6 @@ class TrainEnEquivariantDDPMConfig(EnEquivariantDDPMConfig):
     split_ratio: List[float] = (0.8, 0.1, 0.1)
     num_workers: int = 4
     tol: float = -1.0
-    split: Literal["10", "100", "1k", "10k", "100k", "all"] = "all"
 
     # ===============
     # Training Fields
@@ -87,74 +91,3 @@ class TrainEnEquivariantDDPMConfig(EnEquivariantDDPMConfig):
         extra = "forbid"
         CLI_BOOL_PREFIX = ("--enable_", "--disable_")
 
-
-class RefEquivariantDDPMConfig(pydantic.BaseModel):
-    """Configuration object for the DDPM."""
-
-    # ===========
-    # EGNN Fields
-    # ===========
-
-    d_egnn_atom_vocab: int = 16
-    d_egnn_hidden: int = 256
-    n_egnn_layers: int = 4
-
-    # ===============
-    # Schedule Fields
-    # ===============
-
-    timesteps: int = 1000
-    noise_shape: str = "polynomial_2"
-    noise_precision: float = 1e-5
-
-    loss_weight: float = 1.0
-
-
-class TrainRefEquivariantDDPMConfig(EnEquivariantDDPMConfig):
-    """Configuration object for training the DDPM."""
-
-    seed: int = 100
-    debug: bool = False
-
-    accelerator: str = "cpu"
-    devices: int = 1
-    strategy: Optional[str] = None
-
-    # =================
-    # Datamodule Fields
-    # =================
-
-    batch_size: int = 64
-    split_ratio: List[float] = (0.8, 0.1, 0.1)
-    num_workers: int = 4
-    tol: float = -1.0
-    split: Literal["10", "100", "1k", "10k", "100k", "all"] = "all"
-
-    # ===============
-    # Training Fields
-    # ===============
-
-    loss_type: Literal["VLB", "L2"] = "L2"
-
-    max_epochs: int = 500
-    lr: float = 1e-4
-
-    ema_decay: float = 0.9999
-    clip_grad_norm: bool = True
-
-    # ================
-    # Sampling Fields
-    # ================
-
-    n_visualize_samples: int = 3
-    n_sample_metric_batches: int = 20
-
-    # ==============
-    # Logging Fields
-    # ==============
-
-    wandb: bool = False
-    checkpoint: bool = False
-
-    log_every_n_steps: int = 10
-    progress_bar: bool = False

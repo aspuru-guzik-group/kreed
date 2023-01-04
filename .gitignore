@@ -138,4 +138,6 @@ dmypy.json
 # Debugging
 data/geom/raw/
 data/geom/processed/
+data/geom/processed_files/
+data/geom/splits/
 logs/
