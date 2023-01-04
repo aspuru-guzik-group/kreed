@@ -4,13 +4,18 @@ import pathlib
 import msgpack
 import torch
 import tqdm
+import numpy as np
 
 
 def geom_unpacker():
     path = pathlib.Path(__file__).parent / "raw" / "drugs_crude.msgpack"
+    count = 0
     with open(path, "rb") as f:
         unpacker = msgpack.Unpacker(f)
         for batch in tqdm.tqdm(iter(unpacker), desc="Processing GEOM"):
+            count += 1
+            if count == 5:
+                return
             yield batch
 
 
@@ -20,6 +25,7 @@ def preprocess_geom(n_conformers):
 
     geom_smiles = []
     geom_conformations = []
+    geom_number_atoms = []
     for batch_idx, batch in enumerate(geom_unpacker()):
 
         for smiles, batch_metadata in batch.items():
@@ -28,27 +34,33 @@ def preprocess_geom(n_conformers):
             conformers.sort(key=lambda d: d["totalenergy"])
             conformers = conformers[:n_conformers]
 
-            conformer_data = []
-
             for c in conformers:
-                xyz = torch.tensor(c["xyz"])
-                atom_nums, coords = xyz[:, 0].long(), xyz[:, 1:].float()
 
-                conformer_data.append({
-                    "xyz": coords,
-                    "atom_nums": atom_nums,
-                    "geom_id": c["geom_id"],
-                    "smiles_id": len(geom_smiles),
-                })
+                # atom_type, x, y, z
+                txyz = np.array(c['xyz']).astype(float) # (n, 4)
 
+                n = len(txyz)
+
+                size = n * np.ones((n, 1), dtype=float)
+                smiles_id = len(geom_smiles) * np.ones((n, 1), dtype=float)
+                geom_id = c['geom_id'] * np.ones((n, 1), dtype=float)
+
+                example = np.hstack( (smiles_id, size, geom_id, txyz) ) # (n, 7)
+
+                geom_conformations.append(example)
+            
+            geom_number_atoms.append(n)
             geom_smiles.append(smiles)
-            geom_conformations.append(conformer_data)
+    
+    num_conformations = len(geom_conformations)
+    geom_conformations = np.vstack(geom_conformations)
 
     with open(save_dir / "smiles.txt", "w+") as f:
         f.write("\n".join(geom_smiles))
-    torch.save(geom_conformations, save_dir / "conformations.pt")
+    
+    with open(save_dir / 'conformations.npy', 'wb') as f:
+        np.save(f, geom_conformations)
 
-    num_conformations = sum(len(x) for x in geom_conformations)
     print(f"Caching {num_conformations} conformations from {len(geom_smiles)} molecules.")
 
 

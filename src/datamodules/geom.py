@@ -1,6 +1,6 @@
 import pathlib
 import random
-
+import numpy as np
 import dgl
 import lightning_lite
 import pytorch_lightning as pl
@@ -51,12 +51,11 @@ _EDGE_CACHE = _build_edge_cache(max_nodes=200)
 
 class GEOMDataset(Dataset):
 
-    def __init__(self, conformations, tol, center_com):
+    def __init__(self, conformations, tol):
         super().__init__()
 
         self.conformations = conformations
         self.tol = tol
-        self.center_com = center_com
 
     def __len__(self):
         return len(self.paths)
@@ -64,8 +63,10 @@ class GEOMDataset(Dataset):
     def __getitem__(self, idx):
         conformer = self.conformations[idx]
 
-        xyz = conformer["xyz"]
-        atom_nums = conformer["atom_nums"]
+        geom_id = int(conformer[0][0])
+        atom_nums = torch.tensor(conformer[:, 1], dtype=torch.long)
+        xyz = torch.tensor(conformer[:, 2:], dtype=torch.float)
+
         n = atom_nums.shape[0]
 
         # Create a complete graph
@@ -79,6 +80,9 @@ class GEOMDataset(Dataset):
 
         # Canonicalize conformation
         G = rotated_to_principal_axes(G)
+
+        # Center molecule coordinates to 0 CoM subspace
+        G.ndata["xyz"] = dists.centered_mean(G, G.ndata["xyz"])
 
         # Retrieve unsigned coordinates
         abs_xyz = torch.abs(G.ndata["xyz"])
@@ -101,12 +105,8 @@ class GEOMDataset(Dataset):
         # Convert atom number to idx
         G.ndata["atom_nums"] = self.ztoi[G.ndata["atom_nums"]]
 
-        if self.center_com:
-            # Center molecule coordinates to 0 CoM subspace
-            G.ndata["xyz"] = dists.centered_mean(G, G.ndata["xyz"])
-
         # Record GEOM ID
-        G.ndata["id"] = torch.full((n,), conformer["geom_id"])  # hack to store graph-level data
+        G.ndata["id"] = torch.full((n,), geom_id)  # hack to store graph-level data
 
         return G
 
@@ -120,7 +120,6 @@ class GEOMDatamodule(pl.LightningDataModule):
         split_ratio=(0.8, 0.1, 0.1),
         num_workers=0,
         tol=-1.0,
-        split='10',
     ):
         super().__init__()
 
@@ -130,20 +129,39 @@ class GEOMDatamodule(pl.LightningDataModule):
 
         data_dir = pathlib.Path(__file__).parents[2] / "data" / "geom" / "processed"
 
-        # This is a 2D ragged list
-        # D[i][j] = j-th conformer for the i-th molecule
-        D = torch.load(data_dir / f"conformations_{split}.pt")
+        # This is a single tensor (*, 7) containing all data, where each row describes an atom
+        # idx 0: smiles_id of the molecule it belongs to
+        # idx 1: number of atoms in the molecule it belongs to
+        # idx 2: geom_id of the conformer it belongs to
+        # idx 3: atom type
+        # idx 4-6: xyz
+        with open(data_dir / "conformations.npy", 'rb') as f:
+            conformations = np.load(f)
+        # with open(data_dir / "number_atoms.npy", 'rb') as f:
+        #     self.number_atoms = np.load(f)
+        smiles_id = conformations[:, 0].astype(int)
+        conformers = conformations[:, 1:]
 
+        # Get ids corresponding to new molecules
+        split_indices = np.nonzero(smiles_id[:-1] - smiles_id[1:])[0] + 1
+
+        conformers_by_mol = np.split(conformers, split_indices)
         # Split by molecule
         splits = {"train": None, "val": None, "test": None}
         val_test_ratio = split_ratio[1] / (split_ratio[1] + split_ratio[2])
-        splits["train"], D = train_test_split(D, train_size=split_ratio[0], random_state=seed)
-        splits["val"], splits["test"] = train_test_split(D, train_size=val_test_ratio, random_state=(seed + 1))
+        splits["train"], conformers_by_mol = train_test_split(conformers_by_mol, train_size=split_ratio[0], random_state=seed)
+        splits["val"], splits["test"] = train_test_split(conformers_by_mol, train_size=val_test_ratio, random_state=(seed + 1))
 
         datasets = {}
         for n, conformations in splits.items():
-            conformations = sum(conformations, [])  # flattens the 2D list
-            datasets[n] = GEOMDataset(conformations, tol=tol)
+
+            all_conformations = []
+            for mol in splits['train']:
+                n = int(mol[0][0])
+                mol_confs = mol[:, 1:]
+                all_conformations.extend(np.split(mol_confs, len(mol) / n))
+
+            datasets[n] = GEOMDataset(all_conformations, tol=tol)
         self.datasets = datasets
 
     @property
