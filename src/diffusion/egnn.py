@@ -90,7 +90,7 @@ class EGNNConv(nn.Module):
 
             # get coordinate diff & radial features
             graph.apply_edges(fn.u_sub_v("x", "x", "x_diff"))
-            graph.edata["radial"] = graph.edata["x_diff"].square().sum(dim=1).unsqueeze(-1)
+            graph.edata["radial"] = graph.edata["x_diff"].abs().sum(dim=1).unsqueeze(-1) # replace with L1 distance for reflection equivariance?
 
             # normalize coordinate difference
             graph.edata["x_diff"] = graph.edata["x_diff"] / (graph.edata["radial"].sqrt() + 1.0)
@@ -121,7 +121,9 @@ class EGNNDynamics(nn.Module):
         super().__init__()
 
         self.d_atom_vocab = d_atom_vocab
-        self.lin_hid = nn.Linear(2 + 3 + d_atom_vocab, d_hidden)
+        
+        # atom_vocab + t + abs_mask + abs_xyz
+        self.lin_hid = nn.Linear(d_atom_vocab + 1 + 3 + 3, d_hidden)
 
         self.egnn_layers = nn.ModuleList([
             EGNNConv(
@@ -139,7 +141,7 @@ class EGNNDynamics(nn.Module):
             [
                 F.one_hot(G.ndata["atom_nums"], num_classes=self.d_atom_vocab),
                 dgl.broadcast_nodes(G, t).float(),
-                G.ndata["abs_mask"].unsqueeze(-1).float(),
+                G.ndata["abs_mask"].float(),
                 G.ndata["abs_xyz"],
             ],
             dim=-1
@@ -147,10 +149,9 @@ class EGNNDynamics(nn.Module):
 
         with G.local_scope():
             G.apply_edges(fn.u_sub_v("xyz", "xyz", "xyz_diff"))
-            a = G.edata["xyz_diff"].square().sum(dim=1).unsqueeze(-1)
+            a = G.edata["xyz_diff"].abs().sum(dim=1).unsqueeze(-1) # replace with L1
 
         h = self.lin_hid(h)
         for layer in self.egnn_layers:
             h, xyz = layer(G, node_feat=h, coord_feat=xyz, edge_feat=a)
-        vel = xyz - G.ndata["xyz"]
-        return centered_mean(G, vel)
+        return xyz

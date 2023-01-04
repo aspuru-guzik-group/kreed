@@ -13,6 +13,7 @@ from rdkit import Chem
 from src.datamodules.geom import GEOM_ATOMS
 from src.diffusion import EGNNDynamics, EnEquivariantDiffusionModel
 from src.visualize import html_render
+from src.xyz2mol import xyz2mol
 
 
 class PlEnEquivariantDiffusionModel(pl.LightningModule):
@@ -51,17 +52,19 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
         )
 
         self.ema = torch_ema.ExponentialMovingAverage(self.edm.parameters(), decay=ema_decay)
+        self.ema_moved_to_device = False
 
         self.grad_norm_queue = collections.deque([3000, 3000], maxlen=50)
-
-    def setup(self, stage):
-        self.ema.to(self.device)
 
     def configure_optimizers(self):
         return torch.optim.Adam(params=self.edm.parameters(), lr=self.hparams.lr)
 
     def optimizer_step(self, *args, **kwargs):
         super().optimizer_step(*args, **kwargs)
+
+        if not self.ema_moved_to_device:
+            self.ema.to(self.device)
+            self.ema_moved_to_device = True
         self.ema.update()
 
     def configure_gradient_clipping(self, optimizer, optimizer_idx, gradient_clip_val=None, gradient_clip_algorithm=None):
@@ -78,7 +81,7 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         nll = self._step(batch, "train")
         if batch_idx < self.hparams.n_sample_metric_batches:
-            self._visualize_and_check_samples(batch, "train", n_visualize=0)
+            self._visualize_and_check_samples(batch, "train", n_visualize=1)
         return nll
 
     def validation_step(self, batch, batch_idx):
@@ -129,11 +132,14 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
                 minimize=True
             )
 
-            mols = xyz2mol.xyz2mol(
-                atoms=atom_nums.tolist(),
-                coordinates=coords_pred.tolist(),
-                embed_chiral=False,
-            )
+            try:
+                mols = xyz2mol(
+                    atoms=atom_nums.tolist(),
+                    coordinates=coords_pred.tolist(),
+                    embed_chiral=False,
+                )
+            except ValueError:
+                mols = False
 
             stability += (1.0 if mols else 0.0)
 

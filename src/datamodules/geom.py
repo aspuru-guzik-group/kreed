@@ -58,6 +58,12 @@ class GEOMDataset(Dataset):
         # Retrieve unsigned coordinates
         abs_xyz = torch.abs(G.ndata["xyz"])
 
+        # carbon_abs_xyz = abs_xyz[atom_nums == 6]
+
+        # G.ndata['carbon_abs_xyz'] = carbon_abs_xyz
+
+        # sign_mask = 
+
         abs_mask = torch.logical_and(
             (atom_nums == 6),  # carbon
             torch.any(abs_xyz >= self.tol, dim=-1),  # coordinate not too close to axis
@@ -65,14 +71,19 @@ class GEOMDataset(Dataset):
 
         abs_xyz[~abs_mask, :] = 0.0
 
+        G.ndata['signs'] = torch.where(abs_xyz == 0.0, 0.0, G.ndata['xyz'] / abs_xyz)
+
+        G.ndata['free_xyz'] = torch.where(G.ndata['signs'] == 0.0, G.ndata['xyz'], 0.0)
+        G.ndata['free_mask'] = (abs_xyz == 0.0)
+
         G.ndata["abs_xyz"] = abs_xyz
-        G.ndata["abs_mask"] = abs_mask
+        G.ndata["abs_mask"] = (abs_xyz != 0.0)
 
         # Convert atom number to idx
         G.ndata["atom_nums"] = self.ztoi[G.ndata["atom_nums"]]
 
         # Center molecule coordinates to 0 CoM subspace
-        G.ndata["xyz"] = dists.centered_mean(G, G.ndata["xyz"])
+        # G.ndata["xyz"] = dists.centered_mean(G, G.ndata["xyz"])
 
         # Record GEOM ID
         G.ndata["id"] = torch.full((n, ), conformer["geom_id"])  # hack to store graph-level data
@@ -89,6 +100,7 @@ class GEOMDatamodule(pl.LightningDataModule):
         split_ratio=(0.8, 0.1, 0.1),
         num_workers=0,
         tol=-1.0,
+        split='10',
     ):
         super().__init__()
 
@@ -100,7 +112,7 @@ class GEOMDatamodule(pl.LightningDataModule):
 
         # This is a 2D ragged list
         # D[i][j] = j-th conformer for the i-th molecule
-        D = torch.load(data_dir / "conformations.pt")
+        D = torch.load(data_dir / f"conformations_{split}.pt")
 
         # Split by molecule
         splits = {"train": None, "val": None, "test": None}

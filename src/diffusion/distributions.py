@@ -25,9 +25,12 @@ def subspace_gaussian_KL_div(G, q_mean, q_var, p_mean, p_var):
     assert q_var.ndim == p_var.ndim == 1
 
     with G.local_scope():
-        G.ndata["mean_diff"] = (q_mean - p_mean) ** 2.0
+        G.ndata["mean_diff"] = torch.where(G.ndata['free_mask'], (q_mean - p_mean) ** 2.0, 0.0)
         mean_sqe_dist = dgl.sum_nodes(G, "mean_diff").sum(dim=-1)
 
-    d = (G.batch_num_nodes() - 1) * 3
+    d = G.ndata['free_mask'].sum()
     kl_div = d * torch.log(p_var / q_var) - d + ((mean_sqe_dist + d * q_var) / p_var)
+    # check this later
+
     return 0.5 * kl_div
+

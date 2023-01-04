@@ -1,18 +1,17 @@
 import argparse
 import pathlib
-import pickle
 
+import msgpack
 import torch
 import tqdm
 
 
 def geom_unpacker():
-    raw_dir = pathlib.Path(__file__).parent / "raw"
-    raw_paths = list(raw_dir.glob("*.pkl"))
-    for path in tqdm.tqdm(raw_paths, desc="Processing GEOM"):
-        with open(path, "rb") as f:
-            batch = pickle.load(f)
-        yield batch
+    path = pathlib.Path(__file__).parent / "raw" / "drugs_crude.msgpack"
+    with open(path, "rb") as f:
+        unpacker = msgpack.Unpacker(f)
+        for batch in tqdm.tqdm(iter(unpacker), desc="Processing GEOM"):
+            yield batch
 
 
 def preprocess_geom(n_conformers):
