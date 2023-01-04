@@ -7,51 +7,48 @@ import spyrmsd.rmsd
 import torch
 import torch_ema
 import wandb
-import xyz2mol
-from rdkit import Chem
+from pytorch_lightning.loggers.wandb import WandbLogger
 
-from src.datamodules.geom import GEOM_ATOMS
-from src.diffusion import EGNNDynamics, EnEquivariantDiffusionModel
+from src.diffusion.configs import RefEquivariantDDPMConfig
+from src.modules import RefEGNNDynamics, RefEquivariantDDPM
 from src.visualize import html_render
 from src.xyz2mol import xyz2mol
 
 
-class PlEnEquivariantDiffusionModel(pl.LightningModule):
+class LitRefEquivariantDDPM(pl.LightningModule):
 
     def __init__(
         self,
-        d_egnn_atom_vocab=16,
-        d_egnn_hidden=256,
-        n_egnn_layers=4,
-        timesteps=1000,
-        noise_shape="polynomial_2",
-        noise_precision=0.08,
-        loss_type="L2",
-        lr=1e-4,
-        ema_decay=0.999,
-        clip_grad_norm=True,
-        n_visualize_samples=3,
-        n_sample_metric_batches=20,
+        config: RefEquivariantDDPMConfig,
+        loss_type,
+        lr,
+        ema_decay,
+        clip_grad_norm,
+        n_visualize_samples,
+        n_sample_metric_batches,
     ):
         super().__init__()
 
         self.save_hyperparameters()
+        self.config = config
 
-        dynamics = EGNNDynamics(
-            d_atom_vocab=d_egnn_atom_vocab,
-            d_hidden=d_egnn_hidden,
-            n_layers=n_egnn_layers,
+        dynamics = RefEGNNDynamics(
+            d_atom_vocab=config.d_egnn_atom_vocab,
+            d_hidden=config.d_egnn_hidden,
+            n_layers=config.n_egnn_layers,
         )
 
-        self.edm = EnEquivariantDiffusionModel(
+        self.edm = RefEquivariantDDPM(
             dynamics=dynamics,
-            timesteps=timesteps,
-            noise_shape=noise_shape,
-            noise_precision=noise_precision,
-            loss_type=loss_type
+            timesteps=config.timesteps,
+            noise_shape=config.noise_shape,
+            noise_precision=config.noise_precision,
+            loss_type=loss_type,
+            loss_weight=config.loss_weight,
         )
 
-        self.ema = torch_ema.ExponentialMovingAverage(self.edm.parameters(), decay=ema_decay)
+        trainable_params = [p for p in self.edm.parameters() if p.requires_grad]
+        self.ema = torch_ema.ExponentialMovingAverage(trainable_params, decay=ema_decay)
         self.ema_moved_to_device = False
 
         self.grad_norm_queue = collections.deque([3000, 3000], maxlen=50)
@@ -79,24 +76,24 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
         self.grad_norm_queue.append(grad_norm)
 
     def training_step(self, batch, batch_idx):
-        nll = self._step(batch, "train")
+        nll = self._step(batch, split="train")
         if batch_idx < self.hparams.n_sample_metric_batches:
-            self._visualize_and_check_samples(batch, "train", n_visualize=1)
+            self._evaluate_samples(batch, split="train", n_visualize=0)
         return nll
 
     def validation_step(self, batch, batch_idx):
         with self.ema.average_parameters():
-            nll = self._step(batch, "val")
+            nll = self._step(batch, split="val")
             if batch_idx < self.hparams.n_sample_metric_batches:
                 n_visualize = self.hparams.n_visualize_samples if (batch_idx == 0) else 0
-                self._visualize_and_check_samples(batch, "val", n_visualize=n_visualize)
+                self._evaluate_samples(batch, split="val", n_visualize=n_visualize)
             return nll
 
     def test_step(self, batch, batch_idx):
         with self.ema.average_parameters():
-            nll = self._step(batch, "test")
+            nll = self._step(batch, split="test")
             n_visualize = self.hparams.n_visualize_samples if (batch_idx == 0) else 0
-            self._visualize_and_check_samples(batch, "test", n_visualize=n_visualize)
+            self._evaluate_samples(batch, split="test", n_visualize=n_visualize)
             return nll
 
     def _step(self, G, split):
@@ -104,7 +101,7 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
         self.log(f"{split}/nll", nll, batch_size=G.batch_size)
         return nll
 
-    def _visualize_and_check_samples(self, G, split, n_visualize):
+    def _evaluate_samples(self, G, split, n_visualize):
         G_sample = self.edm.sample_p_G0(G_init=G)
 
         rmsd = 0.0
@@ -112,16 +109,17 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
 
         for i, (G_true, G_pred) in enumerate(zip(dgl.unbatch(G), dgl.unbatch(G_sample))):
             geom_id = G_true.ndata["id"][0].item()
-            atom_nums = GEOM_ATOMS[G_true.ndata["atom_nums"]].cpu().numpy()
+            atom_nums = G_true.ndata["atom_nums"].cpu().numpy()
             coords_true = G_true.ndata["xyz"].cpu().numpy()
             coords_pred = G_pred.ndata["xyz"].cpu().numpy()
 
             if i < n_visualize:
-                wandb.log({
-                    f"{split}/samples/true_{i}": wandb.Html(html_render(geom_id, atom_nums, coords_true)),
-                    f"{split}/samples/pred_{i}": wandb.Html(html_render(geom_id, atom_nums, coords_pred)),
-                    "epoch": self.current_epoch,
-                })
+                if isinstance(self.logger, WandbLogger):
+                    wandb.log({
+                        f"{split}/true_{i}": wandb.Html(html_render(geom_id, atom_nums, coords_true)),
+                        f"{split}/pred_{i}": wandb.Html(html_render(geom_id, atom_nums, coords_pred)),
+                        "epoch": self.current_epoch,
+                    })
 
             # Compute sample metrics
             rmsd += spyrmsd.rmsd.rmsd(
@@ -148,10 +146,3 @@ class PlEnEquivariantDiffusionModel(pl.LightningModule):
 
         self.log(f"{split}/rmsd", rmsd, batch_size=G.batch_size)
         self.log(f"{split}/stability", stability, batch_size=G.batch_size)
-
-        # from ase import Atoms
-        # from ase.io import write
-        # from wandb import Molecule
-        # atoms = Atoms(numbers=Z, positions=XYZ)
-        # write('atoms.pdb', atoms)
-        # wandb.log({f"{split}_atoms":Molecule('atoms.pdb')})

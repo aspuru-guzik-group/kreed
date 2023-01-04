@@ -1,41 +1,65 @@
 import pathlib
+import random
 
 import dgl
+import lightning_lite
 import pytorch_lightning as pl
 import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
-import src.diffusion.distributions as dists
+import src.modules.distributions as dists
 from src.kraitchman import rotated_to_principal_axes
 
+
+# ================================================================================================ #
+#                                              Caches                                              #
+# ================================================================================================ #
+
 # GEOM constants
-MAX_GEOM_ATOMS = 200
-GEOM_ATOMS = torch.tensor([1, 5, 6, 7, 8, 9, 13, 14, 15, 16, 17, 33, 35, 53, 80, 83], dtype=torch.long)
+
+def _build_atom_map_cache():
+    geom_atoms = torch.tensor([1, 5, 6, 7, 8, 9, 13, 14, 15, 16, 17, 33, 35, 53, 80, 83], dtype=torch.long)
+
+    ztoi = torch.full([84], -100, dtype=torch.long)
+    for i, z in enumerate(geom_atoms):
+        ztoi[z] = i
+    return ztoi
+
+
+_GEOM_ATOMS_ZTOI = _build_atom_map_cache()
+
 
 # Cache to optimize connected graph creation
-_EDGE_CACHE = []
-for i in range(MAX_GEOM_ATOMS):
-    for j in range(i):
-        _EDGE_CACHE.append([i, j])
-        _EDGE_CACHE.append([j, i])
-_EDGE_CACHE = torch.tensor(_EDGE_CACHE, dtype=torch.long)
+
+def _build_edge_cache(max_nodes):
+    cache = []
+    for i in range(max_nodes):
+        for j in range(i):
+            cache.append([i, j])
+            cache.append([j, i])
+    return torch.tensor(cache, dtype=torch.long)
+
+
+_EDGE_CACHE = _build_edge_cache(max_nodes=200)
+
+
+# ================================================================================================ #
+#                                         Data Handling                                            #
+# ================================================================================================ #
 
 
 class GEOMDataset(Dataset):
 
-    def __init__(self, conformations, tol):
+    def __init__(self, conformations, tol, center_com):
         super().__init__()
 
         self.conformations = conformations
         self.tol = tol
-
-        self.ztoi = torch.full([84], -100, dtype=torch.long)
-        for i, z in enumerate(GEOM_ATOMS):
-            self.ztoi[z] = i
+        self.center_com = center_com
 
     def __len__(self):
-        return len(self.conformations)
+        return len(self.paths)
 
     def __getitem__(self, idx):
         conformer = self.conformations[idx]
@@ -50,6 +74,7 @@ class GEOMDataset(Dataset):
 
         G = dgl.graph((u, v), num_nodes=n)
         G.ndata["atom_nums"] = atom_nums
+        G.ndata["atom_ids"] = _GEOM_ATOMS_ZTOI[atom_nums]
         G.ndata["xyz"] = xyz
 
         # Canonicalize conformation
@@ -58,12 +83,6 @@ class GEOMDataset(Dataset):
         # Retrieve unsigned coordinates
         abs_xyz = torch.abs(G.ndata["xyz"])
 
-        # carbon_abs_xyz = abs_xyz[atom_nums == 6]
-
-        # G.ndata['carbon_abs_xyz'] = carbon_abs_xyz
-
-        # sign_mask = 
-
         abs_mask = torch.logical_and(
             (atom_nums == 6),  # carbon
             torch.any(abs_xyz >= self.tol, dim=-1),  # coordinate not too close to axis
@@ -71,22 +90,23 @@ class GEOMDataset(Dataset):
 
         abs_xyz[~abs_mask, :] = 0.0
 
+        G.ndata["abs_xyz"] = abs_xyz
+        G.ndata["abs_mask"] = abs_mask
+
         G.ndata['signs'] = torch.where(abs_xyz == 0.0, 0.0, G.ndata['xyz'] / abs_xyz)
 
         G.ndata['free_xyz'] = torch.where(G.ndata['signs'] == 0.0, G.ndata['xyz'], 0.0)
-        G.ndata['free_mask'] = (abs_xyz == 0.0)
-
-        G.ndata["abs_xyz"] = abs_xyz
-        G.ndata["abs_mask"] = (abs_xyz != 0.0)
+        G.ndata['free_mask'] = ~abs_mask
 
         # Convert atom number to idx
         G.ndata["atom_nums"] = self.ztoi[G.ndata["atom_nums"]]
 
-        # Center molecule coordinates to 0 CoM subspace
-        # G.ndata["xyz"] = dists.centered_mean(G, G.ndata["xyz"])
+        if self.center_com:
+            # Center molecule coordinates to 0 CoM subspace
+            G.ndata["xyz"] = dists.centered_mean(G, G.ndata["xyz"])
 
         # Record GEOM ID
-        G.ndata["id"] = torch.full((n, ), conformer["geom_id"])  # hack to store graph-level data
+        G.ndata["id"] = torch.full((n,), conformer["geom_id"])  # hack to store graph-level data
 
         return G
 
@@ -128,7 +148,7 @@ class GEOMDatamodule(pl.LightningDataModule):
 
     @property
     def d_atom_vocab(self):
-        return len(GEOM_ATOMS)
+        return len(_GEOM_ATOMS_ZTOI)
 
     def train_dataloader(self):
         return self._loader(split="train", shuffle=True, drop_last=True)
@@ -146,4 +166,5 @@ class GEOMDatamodule(pl.LightningDataModule):
             shuffle=shuffle,
             num_workers=self.num_workers,
             drop_last=drop_last,
+            worker_init_fn=lightning_lite.utilities.seed.pl_worker_init_function,
         )

@@ -15,11 +15,27 @@ def centered_mean(G, xyz):
 
 def assert_centered_mean(G, xyz):
     com = _mean(G, xyz)
-    assert com.abs().max().item() < 1e-5, com
+    error = com.abs().max().item() / xyz.abs().max().item()
+    assert error < 1e-4, error
 
 
 def subspace_gaussian_KL_div(G, q_mean, q_var, p_mean, p_var):
     """Computes KL[q(z)||p(z)], where q and p are isotropic Gaussians.
+    """
+
+    assert q_var.ndim == p_var.ndim == 1
+
+    with G.local_scope():
+        G.ndata["mean_diff"] = (q_mean - p_mean) ** 2.0
+        mean_sqe_dist = dgl.sum_nodes(G, "mean_diff").sum(dim=-1)
+
+    d = (G.batch_num_nodes() - 1) * 3
+    kl_div = d * torch.log(p_var / q_var) - d + ((mean_sqe_dist + d * q_var) / p_var)
+    return 0.5 * kl_div
+
+
+def gaussian_KL_div(G, q_mean, q_var, p_mean, p_var):
+    """Computes KL[q(z)||p(z)], where q and p are isotropic Gaussians. Does not use the mean-centered subspace.
     """
 
     assert q_var.ndim == p_var.ndim == 1

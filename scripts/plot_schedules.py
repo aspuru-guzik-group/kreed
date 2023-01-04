@@ -1,27 +1,29 @@
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
+from tqdm import trange
 
-from src.diffusion.schedules import LearnedNoiseSchedule, FixedNoiseSchedule
+from src.modules.schedules import LearnedNoiseSchedule, FixedNoiseSchedule
 
 
-def visualize_schedules():
+def plot_schedules():
     T = 1000
 
     schedules = {
         "polynomial_1": FixedNoiseSchedule("polynomial_1", timesteps=T, precision=1e-5),
         "polynomial_2": FixedNoiseSchedule("polynomial_2", timesteps=T, precision=1e-5),
         "cosine": FixedNoiseSchedule("cosine", timesteps=T, precision=0.008),
-        "learned_init": LearnedNoiseSchedule(),
-        "learned_trained": LearnedNoiseSchedule(),
+        "learned_initial": LearnedNoiseSchedule(d_hidden=10),
+        "learned_trained": LearnedNoiseSchedule(d_hidden=10),
     }
 
-    gt = schedules["polynomial_2"]
-    nn = schedules["learned_trained"]
-    optim = torch.optim.SGD(nn.parameters(), lr=1e-2)
-    for _ in range(2000):
-        nn.zero_grad()
-        loss = F.mse_loss(nn.sweep(T)[1], gt.sweep(T)[1])
+    model = schedules["learned_trained"]
+    optim = torch.optim.SGD(model.parameters(), lr=1e-2)
+
+    labels = schedules["polynomial_2"].sweep(T)[1]
+    for _ in trange(1000, desc="Training Schedule"):
+        model.zero_grad()
+        loss = F.mse_loss(model.sweep(T)[1], labels)
         loss.backward()
         optim.step()
 
@@ -33,9 +35,11 @@ def visualize_schedules():
 
     plt.xlabel(r"$t$")
     plt.ylabel(r"$\bar{\alpha}_t$")
+
     plt.legend()
+    plt.tight_layout()
     plt.show()
 
 
 if __name__ == "__main__":
-    visualize_schedules()
+    plot_schedules()
