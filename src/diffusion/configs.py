@@ -21,7 +21,7 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
     # Schedule Fields
     # ===============
 
-    timesteps: int = 1000
+    timesteps: int = 20
     noise_shape: str = "polynomial_2"
     noise_precision: float = 1e-5
 
@@ -43,7 +43,7 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     seed: int = 100
     debug: bool = False
 
-    accelerator: str = "cpu"
+    accelerator: str = "gpu"
     devices: int = 1
     strategy: Optional[str] = None
 
@@ -73,7 +73,7 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     # ================
 
     n_visualize_samples: int = 3
-    n_sample_metric_batches: int = 20
+    n_sample_metric_batches: int = 2
 
     guidance_scales: List[float] = (0,)
 
@@ -81,13 +81,12 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     # Logging Fields
     # ==============
 
-    wandb: bool = False
+    wandb: bool = True
     checkpoint: bool = False
 
     log_every_n_steps: int = 10
-    progress_bar: bool = False
+    progress_bar: bool = True
 
     class Config(pydantic_cli.DefaultConfig):
         extra = "forbid"
         CLI_BOOL_PREFIX = ("--enable_", "--disable_")
-

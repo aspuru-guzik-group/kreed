@@ -9,13 +9,9 @@ import numpy as np
 
 def geom_unpacker():
     path = pathlib.Path(__file__).parent / "raw" / "drugs_crude.msgpack"
-    count = 0
     with open(path, "rb") as f:
         unpacker = msgpack.Unpacker(f)
         for batch in tqdm.tqdm(iter(unpacker), desc="Processing GEOM"):
-            count += 1
-            if count == 5:
-                return
             yield batch
 
 

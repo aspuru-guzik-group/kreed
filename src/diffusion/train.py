@@ -5,12 +5,13 @@ import pytorch_lightning as pl
 import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint, ModelSummary
 from pytorch_lightning.loggers import WandbLogger
+import sys
+sys.path.append('.')
 
 from src.datamodules import GEOMDatamodule
 from src.diffusion.configs import TrainEquivariantDDPMConfig
 from src.diffusion.model import LitEnEquivariantDDPM
 from src.diffusion.reflection import LitRefEquivariantDDPM
-
 
 def train_ddpm(config: TrainEquivariantDDPMConfig):
     cfg = config
@@ -22,7 +23,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
     root = pathlib.Path(__file__).parents[2]
     log_dir = root / "logs"
     log_dir.mkdir(exist_ok=True)
-
+    
     # Load data
     geom = GEOMDatamodule(
         seed=cfg.seed,
@@ -30,6 +31,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         split_ratio=cfg.split_ratio,
         num_workers=cfg.num_workers,
         tol=cfg.tol,
+        center_mean=(cfg.equivariance=='rotation'),
     )
 
     print("Datamodule loaded.")

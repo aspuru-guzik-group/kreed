@@ -141,3 +141,4 @@ data/geom/processed/
 data/geom/processed_files/
 data/geom/splits/
 logs/
+test_load.ipynb
