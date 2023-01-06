@@ -95,12 +95,12 @@ class GEOMDataset(Dataset):
         G.ndata["abs_xyz"] = abs_xyz
         G.ndata["abs_mask"] = abs_mask
 
-        G.ndata["abs_coord_mask"] = (abs_xyz == 0.0)
+        G.ndata["abs_xyz_mask"] = (abs_xyz == 0.0)
 
         G.ndata['signs'] = torch.where(abs_xyz == 0.0, 0.0, G.ndata['xyz'] / abs_xyz)
 
         G.ndata['free_xyz'] = torch.where(G.ndata['signs'] == 0.0, G.ndata['xyz'], 0.0)
-        G.ndata['free_mask'] = ~abs_mask
+        G.ndata['free_xyz_mask'] = ~G.ndata["abs_xyz_mask"]
 
         if self.center_mean:
             # Center molecule coordinates to 0 CoM subspace
@@ -158,10 +158,11 @@ class GEOMDatamodule(pl.LightningDataModule):
         for split, conformations in splits.items():
 
             all_conformations = []
-            for mol in splits['train']:
-                n = int(mol[0][0])
+            for mol in splits[split]:
+                num_atoms = int(mol[0][0])
                 mol_confs = mol[:, 1:]
-                all_conformations.extend(np.split(mol_confs, len(mol) / n))
+                num_conformers = mol.shape[0] / num_atoms
+                all_conformations.extend(np.split(mol_confs, num_conformers))
 
             datasets[split] = GEOMDataset(all_conformations, tol=tol, center_mean=center_mean)
         self.datasets = datasets
