@@ -11,7 +11,7 @@ from pytorch_lightning.loggers.wandb import WandbLogger
 
 from src.diffusion.configs import EquivariantDDPMConfig
 from src.modules import RefEGNNDynamics, RefEquivariantDDPM
-from src.visualize import html_render
+from src.visualize import html_render, html_render_animate
 from src.xyz2mol import xyz2mol
 
 

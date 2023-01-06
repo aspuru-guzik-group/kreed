@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
 
 import pydantic
 import pydantic_cli
@@ -21,7 +21,7 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
     # Schedule Fields
     # ===============
 
-    timesteps: int = 20
+    timesteps: int = 1000
     noise_shape: str = "polynomial_2"
     noise_precision: float = 1e-5
 
@@ -42,6 +42,7 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
 
     seed: int = 100
     debug: bool = False
+    overfit_batches: Union[float, int] = 0.01
 
     accelerator: str = "gpu"
     devices: int = 1
@@ -73,7 +74,7 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     # ================
 
     n_visualize_samples: int = 3
-    n_sample_metric_batches: int = 2
+    n_sample_metric_batches: int = 1
 
     guidance_scales: List[float] = (0,)
 
@@ -81,11 +82,11 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     # Logging Fields
     # ==============
 
-    wandb: bool = True
+    wandb: bool = False
     checkpoint: bool = False
 
     log_every_n_steps: int = 10
-    progress_bar: bool = True
+    progress_bar: bool = False
 
     class Config(pydantic_cli.DefaultConfig):
         extra = "forbid"

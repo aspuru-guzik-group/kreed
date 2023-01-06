@@ -397,7 +397,7 @@ class RefEquivariantDDPM(torch.nn.Module):
         return self.sample_randn_G_like(G_init=G_t, mean=mean, var=var, p=p, tie_noise=tie_noise)
 
     @torch.no_grad()
-    def sample_p_G0(self, G_init, tie_noise=False, keep_frames=None):
+    def sample_p_G0(self, G_init, tie_noise=False, keep_frames=None, guidance_scale=0.0):
         """Draw samples from the generative model."""
 
         G_T = self.sample_randn_G_like(G_init, tie_noise=tie_noise)

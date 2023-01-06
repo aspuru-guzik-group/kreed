@@ -5,13 +5,10 @@ import pytorch_lightning as pl
 import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint, ModelSummary
 from pytorch_lightning.loggers import WandbLogger
-import sys
-sys.path.append('.')
 
 from src.datamodules import GEOMDatamodule
 from src.diffusion.configs import TrainEquivariantDDPMConfig
-from src.diffusion.model import LitEnEquivariantDDPM
-from src.diffusion.reflection import LitRefEquivariantDDPM
+from src.diffusion.model import LitEquivariantDDPM
 
 def train_ddpm(config: TrainEquivariantDDPMConfig):
     cfg = config
@@ -36,28 +33,9 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
 
     print("Datamodule loaded.")
 
-    if cfg.equivariance == 'rotation':
-        # Initialize and load model
-        ddpm = LitEnEquivariantDDPM(
-            config=cfg,
-            loss_type=cfg.loss_type,
-            lr=cfg.lr,
-            ema_decay=cfg.ema_decay,
-            clip_grad_norm=cfg.clip_grad_norm,
-            n_visualize_samples=cfg.n_visualize_samples,
-            n_sample_metric_batches=cfg.n_sample_metric_batches,
-            guidance_scales=cfg.guidance_scales,
-        )
-    elif cfg.equivariance == 'reflection':
-        # Initialize and load model
-        ddpm = LitRefEquivariantDDPM(
-            config=cfg,
-            loss_type=cfg.loss_type,
-            lr=cfg.lr,
-            ema_decay=cfg.ema_decay,
-            clip_grad_norm=cfg.clip_grad_norm,
-            n_visualize_samples=cfg.n_visualize_samples,
-            n_sample_metric_batches=cfg.n_sample_metric_batches,
+    # Initialize and load model
+    ddpm = LitEquivariantDDPM(
+        config=cfg,
         )
     print("Model loaded.")
 
@@ -99,6 +77,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         max_epochs=cfg.max_epochs,
         log_every_n_steps=cfg.log_every_n_steps,
         enable_progress_bar=cfg.progress_bar,
+        overfit_batches=cfg.overfit_batches,
         **debug_kwargs,
     )
 
