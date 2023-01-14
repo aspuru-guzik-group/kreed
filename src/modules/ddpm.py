@@ -346,21 +346,22 @@ class RefEquivariantDDPM(torch.nn.Module):
 
         G = G_init.local_var()
         if (mean is None) and (var is None) and (p is None):
-            G.ndata["free_xyz"] = torch.where(G.ndata['free_mask'], eps, 0.0)
+            G.ndata["free_xyz"] = torch.where(G.ndata['free_mask'], eps, 0.0) # zero out abs nodes
+
+            sign_flips_01 = torch.bernoulli(0.5 * torch.ones_like(G.ndata['signs']))
         else:
             assert (mean is not None) and (var is not None) and (p is not None)
             std = dgl.broadcast_nodes(G, var.sqrt())
             std = torch.broadcast_to(std.unsqueeze(-1), mean.shape)
             G.ndata["free_xyz"] = torch.where(G.ndata['free_mask'], mean + std * eps, 0.0) # zero out abs nodes
             
-            new_signs_01 = torch.bernoulli(p)
+            sign_flips_01 = torch.bernoulli(p)
 
-            # signs: 0 | 1  -->  -1 | +1
-            new_signs_p1m1 = 2*new_signs_01 - 1.0
-            flipped_signs = G.ndata['signs'] * new_signs_p1m1
-            G.ndata['signs'] = torch.where(G.ndata['abs_mask'], new_signs_p1m1, 0.0) # zero out free nodes
-            G.ndata['xyz'] = G.ndata['signs'] * G.ndata['abs_xyz'] + G.ndata['free_xyz']
-        return G if not return_noise else (G, eps, flipped_signs)
+        # signs: 0 | 1  -->  -1 | +1
+        sign_flips_p1m1 = 2*sign_flips_01 - 1.0
+        G.ndata['signs'] = torch.where(G.ndata['abs_mask'], G.ndata['signs'] * sign_flips_p1m1, 0.0) # zero out free nodes
+        G.ndata['xyz'] = G.ndata['signs'] * G.ndata['abs_xyz'] + G.ndata['free_xyz']
+        return G if not return_noise else (G, eps, sign_flips_p1m1)
 
     def sample_q_Gt_given_Gs(self, G_s, s, t, return_noise=False):
         """Samples from G_t ~ q(G_t|G_s), where s < t."""
@@ -418,7 +419,7 @@ class RefEquivariantDDPM(torch.nn.Module):
         else:
             return G_t, frames
 
-    def noise_error(self, G, pred_eps, true_eps, reduction):
+    def noise_error(self, G, pred_eps, true_eps, true_sign_flips, reduction):
         with G.local_scope():
             G.ndata["error"] = torch.where(G.ndata['free_mask'], (pred_eps - true_eps).square(), 0.0)
             if reduction == "sum":
@@ -431,10 +432,10 @@ class RefEquivariantDDPM(torch.nn.Module):
         abs_mask = G.ndata['abs_mask']
         pred_sign_probs = torch.sigmoid(pred_eps[abs_mask])
 
-        # for now, try to predict G_0's signs, rather than predicting which signs were flipped
-        true_sign_targets_p1m1 = G.ndata['signs'][abs_mask]
+        # try to predict which signs were flipped
+        true_sign_targets_p1m1 = true_sign_flips
         true_sign_targets_01 = (true_sign_targets_p1m1 + 1) / 2
-        sign_bce = F.binary_cross_entropy(pred_sign_probs, true_sign_targets_01, reduction=reduction)
+        sign_bce = F.binary_cross_entropy(pred_sign_probs, true_sign_targets_01[abs_mask], reduction=reduction)
 
         return error*self.loss_weight + sign_bce
 
@@ -484,7 +485,7 @@ class RefEquivariantDDPM(torch.nn.Module):
         SNR_weight = torch.where(t_int == 1, 1, SNR_weight).squeeze(-1)  # w(0) = 1
 
         # sample G_t
-        G_t, eps, flipped_signs = self.sample_q_Gt_given_Gs(G_s=G_0, s=0, t=t, return_noise=True)
+        G_t, eps, sign_flips = self.sample_q_Gt_given_Gs(G_s=G_0, s=0, t=t, return_noise=True)
 
         # Neural net prediction.
         pred_eps = self.dynamics(G=G_t, t=t)
@@ -497,7 +498,7 @@ class RefEquivariantDDPM(torch.nn.Module):
 
             use_l2 = (self.loss_type == "L2")
 
-            error = self.noise_error(G_t, pred_eps=pred_eps, true_eps=eps, reduction="mean")
+            error = self.noise_error(G_t, pred_eps=pred_eps, true_eps=eps, true_sign_flips=sign_flips, reduction="mean")
             loss_tm1 = 0.5 * (1.0 if use_l2 else SNR_weight) * error
 
             if use_l2:
@@ -508,13 +509,13 @@ class RefEquivariantDDPM(torch.nn.Module):
 
         else:
 
-            error = self.noise_error(G_t, pred_eps=pred_eps, true_eps=eps, reduction="sum")
+            error = self.noise_error(G_t, pred_eps=pred_eps, true_eps=eps, true_sign_flips=sign_flips, reduction="sum")
             loss_tm1 = 0.5 * SNR_weight * error
 
             t_1 = torch.ones_like(t) / self.T
-            G_1, eps, flipped_signs1 = self.sample_q_Gt_given_Gs(G_s=G_0, s=0, t=t_1, return_noise=True)
+            G_1, eps, sign_flips1 = self.sample_q_Gt_given_Gs(G_s=G_0, s=0, t=t_1, return_noise=True)
             pred_eps = self.dynamics(G=G_1, t=t_1)
-            error = self.noise_error(G_t, pred_eps=pred_eps, true_eps=eps, reduction="sum")
+            error = self.noise_error(G_t, pred_eps=pred_eps, true_eps=eps, true_sign_flips=sign_flips1, reduction="sum")
 
             loss_0 = (0.5 * error) - self.log_norm_const_p_G0_given_G1(G_0=G_0)
             loss = loss_prior + ((self.T - 1) * loss_tm1) + loss_0

@@ -16,13 +16,19 @@ from src.kraitchman import ATOM_MASSES
 
 class EGNNConv(nn.Module):
 
-    def __init__(self, in_size, hidden_size, out_size, edge_feat_size=0):
+    def __init__(self, in_size, hidden_size, out_size, edge_feat_size=0, equivariance='rotation'):
         super().__init__()
 
         self.in_size = in_size
         self.hidden_size = hidden_size
         self.out_size = out_size
         self.edge_feat_size = edge_feat_size
+        self.equivariance = equivariance
+
+        if self.equivariance == 'rotation':
+            self.norm = lambda x: x.square()
+        elif self.equivariance == 'reflection':
+            self.norm = lambda x: x.abs()
 
         act_fn = nn.SiLU()
 
@@ -91,7 +97,7 @@ class EGNNConv(nn.Module):
 
             # get coordinate diff & radial features
             graph.apply_edges(fn.u_sub_v("x", "x", "x_diff"))
-            graph.edata["radial"] = graph.edata["x_diff"].square().sum(dim=1).unsqueeze(-1)
+            graph.edata["radial"] = self.norm(graph.edata["x_diff"]).sum(dim=1).unsqueeze(-1)
 
             # normalize coordinate difference
             graph.edata["x_diff"] = graph.edata["x_diff"] / (graph.edata["radial"].sqrt() + 1.0)
@@ -118,18 +124,28 @@ class EGNNDynamics(nn.Module):
         d_atom_vocab,
         d_hidden,
         n_layers,
+        equivariance,
     ):
         super().__init__()
 
         self.d_atom_vocab = d_atom_vocab
         self.lin_hid = nn.Linear(6 + d_atom_vocab, d_hidden)
+        self.equivariance = equivariance
+
+        if self.equivariance == 'rotation':
+            self.norm = lambda x: x.square()
+            self.maybe_center = lambda xyz, G: dists.centered_mean(G, xyz - G.ndata["xyz"])
+        elif self.equivariance == 'reflection':
+            self.norm = lambda x: x.abs()
+            self.maybe_center = lambda xyz, G: xyz
 
         self.egnn_layers = nn.ModuleList([
             EGNNConv(
                 in_size=d_hidden,
                 hidden_size=d_hidden,
                 out_size=(0 if (i + 1 == n_layers) else d_hidden),
-                edge_feat_size=1
+                edge_feat_size=1,
+                equivariance=self.equivariance,
             )
             for i in range(n_layers)
         ])
@@ -143,7 +159,7 @@ class EGNNDynamics(nn.Module):
         temb = dgl.broadcast_nodes(G, t).to(xyz)  # (N 1)
 
         # Conditioning features
-        cond_mask = G.ndata["abs_mask"].to(xyz)  # (N)
+        cond_mask = G.ndata["abs_node_mask"].to(xyz)  # (N)
         abs_xyz = G.ndata["abs_xyz"].to(xyz)  # (N 3)
 
         features = [
@@ -162,70 +178,9 @@ class EGNNDynamics(nn.Module):
 
         with G.local_scope():
             G.apply_edges(fn.u_sub_v("xyz", "xyz", "xyz_diff"))
-            a = G.edata["xyz_diff"].square().sum(dim=1).unsqueeze(-1)
+            a = self.norm(G.edata["xyz_diff"]).sum(dim=1).unsqueeze(-1)
 
         h = self.lin_hid(h)
         for layer in self.egnn_layers:
             h, xyz = layer(G, node_feat=h, coord_feat=xyz, edge_feat=a)
-        vel = xyz - G.ndata["xyz"]
-        return dists.centered_mean(G, vel)
-
-class RefEGNNDynamics(nn.Module):
-
-    def __init__(
-        self,
-        d_atom_vocab,
-        d_hidden,
-        n_layers,
-    ):
-        super().__init__()
-
-        self.d_atom_vocab = d_atom_vocab
-        
-        # atom_vocab + atom_mass + t + abs_mask + abs_xyz
-        self.lin_hid = nn.Linear(d_atom_vocab + 1 + 1 + 3 + 3, d_hidden)
-
-        self.egnn_layers = nn.ModuleList([
-            EGNNConv(
-                in_size=d_hidden,
-                hidden_size=d_hidden,
-                out_size=(0 if (i + 1 == n_layers) else d_hidden),
-                edge_feat_size=1
-            )
-            for i in range(n_layers)
-        ])
-
-    def _featurize_nodes(self, G, t):
-        xyz = G.ndata["xyz"]  # for casting
-
-        # Node features
-        atom_ids = F.one_hot(G.ndata["atom_ids"], num_classes=self.d_atom_vocab).to(xyz)  # (N d_vocab)
-        atom_masses = ATOM_MASSES[G.ndata["atom_nums"].cpu()].to(xyz)  # (N)
-        temb = dgl.broadcast_nodes(G, t).to(xyz)  # (N 1)
-
-        # Conditioning features
-        cond_mask = G.ndata["abs_mask"].to(xyz)  # (N 3)
-        abs_xyz = G.ndata["abs_xyz"].to(xyz)  # (N 3)
-
-        features = [
-            atom_ids,
-            atom_masses.unsqueeze(-1) / 12.0,  # FIXME: the normalization is arbitrary here
-            temb,
-            cond_mask,
-            abs_xyz,
-        ]
-
-        return torch.cat(features, dim=-1)  # (N d_vocab+1+1+3+3)
-
-    def forward(self, G, t):
-        xyz = G.ndata["xyz"]
-        h = self._featurize_nodes(G=G, t=t)
-
-        with G.local_scope():
-            G.apply_edges(fn.u_sub_v("xyz", "xyz", "xyz_diff"))
-            a = G.edata["xyz_diff"].abs().sum(dim=1).unsqueeze(-1) # replace with L1
-
-        h = self.lin_hid(h)
-        for layer in self.egnn_layers:
-            h, xyz = layer(G, node_feat=h, coord_feat=xyz, edge_feat=a)
-        return xyz
+        return self.maybe_center(xyz, G)

@@ -10,11 +10,20 @@ JS_TEMPLATE = (
 <script>
 var loadScriptAsync = function(uri){
   return new Promise((resolve, reject) => {
+    //this is to ignore the existence of requirejs amd
+    var savedexports, savedmodule;
+    if (typeof exports !== 'undefined') savedexports = exports;
+    else exports = {}
+    if (typeof module !== 'undefined') savedmodule = module;
+    else module = {}
+
     var tag = document.createElement('script');
     tag.src = uri;
     tag.async = true;
     tag.onload = () => {
-      resolve();
+        exports = savedexports;
+        module = savedmodule;
+        resolve();
     };
   var firstScriptTag = document.getElementsByTagName('script')[0];
   firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
@@ -27,16 +36,12 @@ $3Dmolpromise = null;
 }
 
 var viewer = null;
-var warn = document.getElementById("3dmolwarning");
-if(warn) {
-    warn.parentNode.removeChild(warn);
-}
 $3Dmolpromise.then(function() {
-viewer = $3Dmol.createViewer($("#3dmolviewer"),{backgroundColor:"white"});
+viewer = $3Dmol.createViewer(document.getElementById("3dmolviewer"),{backgroundColor:"white"});
 viewer.zoomTo();
-viewer.addModel(%s,"xyz");
-viewer.setStyle({"sphere": {"scale": 0.5}});
-viewer.zoomTo();
+  viewer.addModel(%s,"xyz");
+  viewer.setStyle({"sphere": {"scale": 0.5}});
+  viewer.zoomTo();
 viewer.render();
 });
 </script>"""

@@ -42,7 +42,6 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
 
     seed: int = 100
     debug: bool = False
-    overfit_batches: Union[float, int] = 0.01
 
     accelerator: str = "gpu"
     devices: int = 1

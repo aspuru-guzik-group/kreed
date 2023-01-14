@@ -6,6 +6,9 @@ import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint, ModelSummary
 from pytorch_lightning.loggers import WandbLogger
 
+import sys
+sys.path.append('.')
+
 from src.datamodules import GEOMDatamodule
 from src.diffusion.configs import TrainEquivariantDDPMConfig
 from src.diffusion.model import LitEquivariantDDPM
@@ -77,7 +80,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         max_epochs=cfg.max_epochs,
         log_every_n_steps=cfg.log_every_n_steps,
         enable_progress_bar=cfg.progress_bar,
-        overfit_batches=cfg.overfit_batches,
+        num_sanity_val_steps=0,
         **debug_kwargs,
     )
 

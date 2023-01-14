@@ -23,7 +23,7 @@ class KraitchmanClassifier(nn.Module):
         sum_logps = 0.0
 
         for G_true, G_pred in zip(dgl.unbatch(G_t), dgl.unbatch(G_rotated)):
-            cond_mask = G_true.ndata["abs_mask"]
+            cond_mask = G_true.ndata["abs_node_mask"]
 
             y_true = G_true.ndata["abs_xyz"]
             y_pred = G_pred.ndata["xyz"].abs()

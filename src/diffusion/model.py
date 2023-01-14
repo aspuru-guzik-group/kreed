@@ -10,7 +10,7 @@ import wandb
 from pytorch_lightning.loggers.wandb import WandbLogger
 
 from src.diffusion.configs import EquivariantDDPMConfig
-from src.modules import EGNNDynamics, RefEGNNDynamics, EnEquivariantDDPM, KraitchmanClassifier, RefEquivariantDDPM
+from src.modules import EGNNDynamics, EnEquivariantDDPM, KraitchmanClassifier, RefEquivariantDDPM
 from src.visualize import html_render, html_render_animate
 from src.xyz2mol import xyz2mol
 
@@ -26,13 +26,14 @@ class LitEquivariantDDPM(pl.LightningModule):
         self.save_hyperparameters()
         self.config = config
 
-        if config.equivariance == 'rotation':
-            dynamics = EGNNDynamics(
+        dynamics = EGNNDynamics(
                 d_atom_vocab=config.d_egnn_atom_vocab,
                 d_hidden=config.d_egnn_hidden,
                 n_layers=config.n_egnn_layers,
+                equivariance=config.equivariance,
             )
 
+        if config.equivariance == 'rotation':
             if config.clf:
                 classifier = KraitchmanClassifier(scale=config.clf_std, stable=config.clf_stable_pi)
             else:
@@ -48,11 +49,6 @@ class LitEquivariantDDPM(pl.LightningModule):
             )
             
         elif config.equivariance == 'reflection':
-            dynamics = RefEGNNDynamics(
-                d_atom_vocab=config.d_egnn_atom_vocab,
-                d_hidden=config.d_egnn_hidden,
-                n_layers=config.n_egnn_layers,
-            )
 
             self.edm = RefEquivariantDDPM(
                 dynamics=dynamics,
@@ -94,7 +90,8 @@ class LitEquivariantDDPM(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         nll = self._step(batch, split="train")
         if batch_idx < self.config.n_sample_metric_batches:
-            self._evaluate_samples(batch, split="train", n_visualize=0)
+            n_visualize = self.config.n_visualize_samples if (batch_idx == 0) else 0
+            self._evaluate_samples(batch, split="train", n_visualize=n_visualize)
         return nll
 
     def validation_step(self, batch, batch_idx):
