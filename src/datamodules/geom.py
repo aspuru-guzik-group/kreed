@@ -51,18 +51,19 @@ _EDGE_CACHE = _build_edge_cache(max_nodes=200)
 
 class GEOMDataset(Dataset):
 
-    def __init__(self, conformations, tol, center_mean):
+    def __init__(self, conformations, tol, center_mean, overfit_samples):
         super().__init__()
 
         self.conformations = conformations
         self.tol = tol
         self.center_mean = center_mean
+        self.overfit_samples = len(conformations)+1 if overfit_samples is None else overfit_samples
 
     def __len__(self):
         return len(self.conformations)
 
     def __getitem__(self, idx):
-        conformer = self.conformations[idx]
+        conformer = self.conformations[idx % self.overfit_samples]
 
         geom_id = int(conformer[0][0])
         atom_nums = torch.tensor(conformer[:, 1], dtype=torch.long)
@@ -90,16 +91,17 @@ class GEOMDataset(Dataset):
             torch.any(abs_xyz >= self.tol, dim=-1),  # coordinate not too close to axis
         )
 
+        # Zero out non-carbons (later, zero out imaginary unsigned coordinates)
         abs_xyz[~abs_mask, :] = 0.0
 
-        G.ndata['signs'] = torch.where(abs_xyz == 0.0, 0.0, G.ndata['xyz'] / abs_xyz)
+        G.ndata['signs'] = torch.where(abs_xyz == 0.0, 0.0, G.ndata['xyz'] / abs_xyz) # (N 3)
 
-        G.ndata['free_xyz'] = torch.where(G.ndata['signs'] == 0.0, G.ndata['xyz'], 0.0)
-        G.ndata['free_mask'] = (abs_xyz == 0.0)
+        G.ndata['free_xyz'] = torch.where(G.ndata['signs'] == 0.0, G.ndata['xyz'], 0.0) # (N 3)
+        G.ndata['free_mask'] = (abs_xyz == 0.0) # (N 3)
 
-        G.ndata["abs_xyz"] = abs_xyz
-        G.ndata["abs_mask"] = (abs_xyz != 0.0)
-        G.ndata["abs_node_mask"] = abs_mask
+        G.ndata["abs_xyz"] = abs_xyz # (N 3)
+        G.ndata["abs_mask"] = (abs_xyz != 0.0) # (N 3)
+        G.ndata["abs_node_mask"] = abs_mask # (N )
 
         if self.center_mean:
             # Center molecule coordinates to 0 CoM subspace
@@ -121,6 +123,7 @@ class GEOMDatamodule(pl.LightningDataModule):
         num_workers=0,
         tol=-1.0,
         center_mean=True,
+        overfit_samples=1,
     ):
         super().__init__()
 
@@ -130,7 +133,7 @@ class GEOMDatamodule(pl.LightningDataModule):
 
         data_dir = pathlib.Path(__file__).parents[2] / "data" / "geom" / "processed"
 
-        # This is a single tensor (*, 7) containing all data, where each row describes an atom
+        # This is a single tensor (total_num_atoms, 7) containing all data, where each row describes an atom
         # idx 0: smiles_id of the molecule it belongs to
         # idx 1: number of atoms in the molecule it belongs to
         # idx 2: geom_id of the conformer it belongs to
@@ -138,8 +141,7 @@ class GEOMDatamodule(pl.LightningDataModule):
         # idx 4-6: xyz
         with open(data_dir / "conformations.npy", 'rb') as f:
             conformations = np.load(f)
-        # with open(data_dir / "number_atoms.npy", 'rb') as f:
-        #     self.number_atoms = np.load(f)
+            
         smiles_id = conformations[:, 0].astype(int)
         conformers = conformations[:, 1:]
 
@@ -147,6 +149,7 @@ class GEOMDatamodule(pl.LightningDataModule):
         split_indices = np.nonzero(smiles_id[:-1] - smiles_id[1:])[0] + 1
 
         conformers_by_mol = np.split(conformers, split_indices)
+
         # Split by molecule
         splits = {"train": None, "val": None, "test": None}
         val_test_ratio = split_ratio[1] / (split_ratio[1] + split_ratio[2])
@@ -163,7 +166,7 @@ class GEOMDatamodule(pl.LightningDataModule):
                 num_conformers = mol.shape[0] / num_atoms
                 all_conformations.extend(np.split(mol_confs, num_conformers))
 
-            datasets[split] = GEOMDataset(all_conformations, tol=tol, center_mean=center_mean)
+            datasets[split] = GEOMDataset(all_conformations, tol=tol, center_mean=center_mean, overfit_samples=overfit_samples)
         self.datasets = datasets
 
     @property

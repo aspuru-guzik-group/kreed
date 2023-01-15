@@ -24,6 +24,8 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
     log_dir = root / "logs"
     log_dir.mkdir(exist_ok=True)
     
+    overfit_samples = 10 if cfg.debug else None
+
     # Load data
     geom = GEOMDatamodule(
         seed=cfg.seed,
@@ -32,6 +34,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         num_workers=cfg.num_workers,
         tol=cfg.tol,
         center_mean=(cfg.equivariance=='rotation'),
+        overfit_samples=overfit_samples,
     )
 
     print("Datamodule loaded.")
@@ -63,13 +66,13 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
 
     if cfg.debug:
         debug_kwargs = {
-            "limit_train_batches": 5,
-            "limit_val_batches": 5,
-            "limit_test_batches": 5,
+            "limit_train_batches": 10000,
+            "limit_val_batches": 0,
+            "limit_test_batches": 0,
         }
     else:
         debug_kwargs = {}
-
+    
     trainer = pl.Trainer(
         accelerator=cfg.accelerator,
         devices=cfg.devices,
@@ -80,7 +83,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         max_epochs=cfg.max_epochs,
         log_every_n_steps=cfg.log_every_n_steps,
         enable_progress_bar=cfg.progress_bar,
-        num_sanity_val_steps=0,
+        num_sanity_val_steps=1,
         **debug_kwargs,
     )
 
