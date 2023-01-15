@@ -152,13 +152,27 @@ class LitEquivariantDDPM(pl.LightningModule):
                     })
 
             # Compute sample metrics
-            rmsd += spyrmsd.rmsd.rmsd(
+
+            # take min(left, right) enantiomer
+            rmsd1 = spyrmsd.rmsd.rmsd(
                 coords1=coords_true,
                 coords2=coords_pred,
                 atomicn1=atom_nums,
                 atomicn2=atom_nums,
                 minimize=True
             )
+
+            coords_pred[:, 0] *= -1 # flip x coordinates for other enantiomer
+
+            rmsd2 = spyrmsd.rmsd.rmsd(
+                coords1=coords_true,
+                coords2=coords_pred,
+                atomicn1=atom_nums,
+                atomicn2=atom_nums,
+                minimize=True
+            )
+
+            rmsd += min(rmsd1, rmsd2)
 
             try:
                 mols = xyz2mol(
