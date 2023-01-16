@@ -50,3 +50,8 @@ def gaussian_KL_div(G, q_mean, q_var, p_mean, p_var):
 
     return 0.5 * kl_div
 
+def KL_div(q, p):
+    """Computes discrete KL divergence KL[ q || p ]
+    """
+    return (q * (q / p).log()).sum()
+

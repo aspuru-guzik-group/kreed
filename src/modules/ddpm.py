@@ -319,12 +319,10 @@ class RefEquivariantDDPM(torch.nn.Module):
 
         mean_t = dgl.broadcast_nodes(G_s, alphas_prod.sqrt()) * G_s.ndata["xyz"]  # (n_nodes, 3)
 
-        # signs: +1 | -1  -->  0 | 1
-        signs_01 = (G_s.ndata['signs']+1) / 2
-
-        # p_t = alpha_bar * signs + (1-alpha_bar)/2
-        # i.e. alpha_bar determines interpolation between current signs and 50% probability for all signs
-        p_t = dgl.broadcast_nodes(G_s, alphas_prod) * signs_01 + (1-dgl.broadcast_nodes(G_s, alphas_prod)) / 2
+        # p_t = alpha_bar * sign_flips + (1-alpha_bar)/2
+        # i.e. alpha_bar determines interpolation between no sign_flips (all 1s) and 50% probability for all sign flips (all 0.5s)
+        sign_flips = torch.ones_like(G_s.ndata['signs'])
+        p_t = dgl.broadcast_nodes(G_s, alphas_prod) * sign_flips + (1-dgl.broadcast_nodes(G_s, alphas_prod)) / 2
         var_t = 1.0 - alphas_cumprod_t.squeeze(-1)  # (batch_size)
 
         return mean_t, var_t, p_t
@@ -458,9 +456,9 @@ class RefEquivariantDDPM(torch.nn.Module):
 
         abs_mask = G_0.ndata['abs_mask']
 
-        bce = F.binary_cross_entropy(p_T[abs_mask], torch.ones_like(p_T[abs_mask])*.5, reduction='sum')
+        discrete_kl_div = dists.KL_div(p_T[abs_mask], torch.ones_like(p_T[abs_mask])*.5)
 
-        return kl_div*self.loss_weight + bce
+        return kl_div*self.loss_weight + discrete_kl_div
 
     def forward(self, G_0):
         """Computes an estimator for the variational lower bound, or the simple loss (MSE)."""
