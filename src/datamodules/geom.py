@@ -51,13 +51,15 @@ _EDGE_CACHE = _build_edge_cache(max_nodes=200)
 
 class GEOMDataset(Dataset):
 
-    def __init__(self, conformations, tol, center_mean, overfit_samples):
+    def __init__(self, conformations, tol, center_mean, overfit_samples, carbon_only):
         super().__init__()
 
         self.conformations = conformations
+        random.shuffle(self.conformations)
         self.tol = tol
         self.center_mean = center_mean
         self.overfit_samples = len(conformations)+1 if overfit_samples is None else overfit_samples
+        self.carbon_only = carbon_only
 
     def __len__(self):
         return len(self.conformations)
@@ -68,6 +70,11 @@ class GEOMDataset(Dataset):
         geom_id = int(conformer[0][0])
         atom_nums = torch.tensor(conformer[:, 1], dtype=torch.long)
         xyz = torch.tensor(conformer[:, 2:], dtype=torch.float)
+
+        if self.carbon_only:
+            mask = (atom_nums == 6)
+            atom_nums = atom_nums[mask]
+            xyz = xyz[mask]
 
         n = atom_nums.shape[0]
 
@@ -124,6 +131,7 @@ class GEOMDatamodule(pl.LightningDataModule):
         tol=-1.0,
         center_mean=True,
         overfit_samples=1,
+        carbon_only=False,
     ):
         super().__init__()
 
@@ -166,7 +174,7 @@ class GEOMDatamodule(pl.LightningDataModule):
                 num_conformers = mol.shape[0] / num_atoms
                 all_conformations.extend(np.split(mol_confs, num_conformers))
 
-            datasets[split] = GEOMDataset(all_conformations, tol=tol, center_mean=center_mean, overfit_samples=overfit_samples)
+            datasets[split] = GEOMDataset(all_conformations, tol=tol, center_mean=center_mean, overfit_samples=overfit_samples, carbon_only=carbon_only)
         self.datasets = datasets
 
     @property

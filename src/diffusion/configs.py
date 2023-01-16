@@ -42,6 +42,7 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
 
     seed: int = 100
     debug: bool = False
+    carbon_only: bool = False
 
     accelerator: str = "gpu"
     devices: int = 1

@@ -24,7 +24,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
     log_dir = root / "logs"
     log_dir.mkdir(exist_ok=True)
     
-    overfit_samples = 10 if cfg.debug else None
+    overfit_samples = 1000 if cfg.debug else None
 
     # Load data
     geom = GEOMDatamodule(
@@ -35,6 +35,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         tol=cfg.tol,
         center_mean=(cfg.equivariance=='rotation'),
         overfit_samples=overfit_samples,
+        carbon_only=cfg.carbon_only,
     )
 
     print("Datamodule loaded.")
