@@ -1,3 +1,4 @@
+import argparse
 import pathlib
 
 import msgpack
@@ -13,7 +14,7 @@ def qm9_unpacker():
             yield batch
 
 
-def preprocess_qm9():
+def preprocess_qm9(min_atoms):
     save_dir = pathlib.Path(__file__).parent / "processed"
     save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -27,6 +28,9 @@ def preprocess_qm9():
             conformers = list(batch_metadata["conformers"])
             conformers.sort(key=lambda d: d["totalenergy"])
             c = conformers[0]
+
+            if len(c) < min_atoms:  # Remove molecules that are too small
+                continue
 
             info = [
                 len(qm9_coords),  # start index
@@ -58,4 +62,8 @@ def preprocess_qm9():
 
 
 if __name__ == "__main__":
-    preprocess_qm9()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--min_atoms", type=int, default=5)
+    args = parser.parse_args()
+
+    preprocess_qm9(args.min_atoms)
