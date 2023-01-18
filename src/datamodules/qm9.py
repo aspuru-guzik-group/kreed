@@ -146,7 +146,7 @@ class QM9Datamodule(pl.LightningDataModule):
         # Split by molecule
         splits = {"train": None, "val": None, "test": None}
         val_test_ratio = split_ratio[1] / (split_ratio[1] + split_ratio[2])
-        splits["train"], conformers_by_mol = train_test_split(D, train_size=split_ratio[0], random_state=seed)
+        splits["train"], D = train_test_split(D, train_size=split_ratio[0], random_state=seed)
         splits["val"], splits["test"] = train_test_split(D, train_size=val_test_ratio, random_state=(seed + 1))
 
         datasets = {}
