@@ -136,10 +136,10 @@ dmypy.json
 .idea/
 
 # Debugging
-data/geom/raw/
-data/geom/processed/
-data/geom/processed_files/
-data/geom/splits/
+data/*/raw/
+data/*/processed/
+data/*/processed_files/
+data/*/splits/
 logs/
 test_load.ipynb
 animate.ipynb
