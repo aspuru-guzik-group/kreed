@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import src.modules.distributions as dists
+from src import utils
 from src.modules.schedules import LearnedNoiseSchedule, FixedNoiseSchedule
 
 
@@ -83,7 +83,7 @@ class EnEquivariantDDPM(nn.Module):
             eps = torch.cat([eps] * G_init.batch_size, dim=0)
         else:
             eps = torch.randn_like(G_init.ndata["xyz"])
-        eps = dists.centered_mean(G_init, eps)
+        eps = utils.centered_mean(G_init, eps)
 
         G = G_init.local_var()
         if (mean is None) and (var is None):
@@ -94,7 +94,7 @@ class EnEquivariantDDPM(nn.Module):
             std = torch.broadcast_to(std.unsqueeze(-1), mean.shape)
             G.ndata["xyz"] = mean + std * eps
 
-        dists.assert_centered_mean(G, G.ndata["xyz"])
+        utils.assert_centered_mean(G, G.ndata["xyz"])
         return G if not return_noise else (G, eps)
 
     def sample_q_Gt_given_Gs(self, G_s, s, t, return_noise=False):
@@ -120,8 +120,8 @@ class EnEquivariantDDPM(nn.Module):
         noise = self.dynamics(G=G_t, t=t)
 
         # sanity check
-        dists.assert_centered_mean(G_t, G_t.ndata["xyz"])
-        dists.assert_centered_mean(G_t, noise)
+        utils.assert_centered_mean(G_t, G_t.ndata["xyz"])
+        utils.assert_centered_mean(G_t, noise)
 
         mean = (G_t.ndata["xyz"] - dgl.broadcast_nodes(G_t, scale) * noise) / dgl.broadcast_nodes(G_t, alphas_t.sqrt())
         if last_step:
@@ -139,7 +139,7 @@ class EnEquivariantDDPM(nn.Module):
             g = g.clip(min=-1.0, max=1.0)
 
             mean = mean + (guidance_scale * var * g)
-            mean = dists.centered_mean(G_t, mean)
+            mean = utils.centered_mean(G_t, mean)
 
         # Sample next coordinates
         return self.sample_randn_G_like(G_init=G_t, mean=mean, var=var, tie_noise=tie_noise)
@@ -149,7 +149,7 @@ class EnEquivariantDDPM(nn.Module):
         """Draw samples from the generative model."""
 
         G_T = self.sample_randn_G_like(G_init, tie_noise=tie_noise)
-        dists.assert_centered_mean(G_T, G_T.ndata["xyz"])
+        utils.assert_centered_mean(G_T, G_T.ndata["xyz"])
 
         frames = {self.T: G_T}
 
@@ -159,7 +159,7 @@ class EnEquivariantDDPM(nn.Module):
             G_t = self.sample_p_Gtm1_given_Gt(G_t=G_t, t=t, tie_noise=tie_noise, guidance_scale=guidance_scale)
             if (keep_frames is not None) and (t in keep_frames):
                 frames[t] = G_t
-        dists.assert_centered_mean(G_t, G_t.ndata["xyz"])  # sanity check
+        utils.assert_centered_mean(G_t, G_t.ndata["xyz"])  # sanity check
 
         frames[0] = G_t
 
@@ -193,7 +193,7 @@ class EnEquivariantDDPM(nn.Module):
 
         mu_T, var_T = self.dist_q_Gt_given_Gs(G_s=G_0, s=0, t=self.T)
         zeros, ones = torch.zeros_like(mu_T), torch.ones_like(var_T)
-        kl_div = dists.subspace_gaussian_KL_div(G_0, mu_T, var_T, zeros, ones)
+        kl_div = utils.subspace_gaussian_KL_div(G_0, mu_T, var_T, zeros, ones)
         return kl_div
 
     def forward(self, G_0):
@@ -452,11 +452,11 @@ class RefEquivariantDDPM(torch.nn.Module):
         mu_T, var_T, p_T = self.dist_q_Gt_given_Gs(G_s=G_0, s=0, t=self.T)
         zeros, ones = torch.zeros_like(mu_T), torch.ones_like(var_T)
 
-        kl_div = dists.gaussian_KL_div(G_0, mu_T, var_T, zeros, ones)
+        kl_div = utils.gaussian_KL_div(G_0, mu_T, var_T, zeros, ones)
 
         abs_mask = G_0.ndata['abs_mask']
 
-        discrete_kl_div = dists.KL_div(p_T[abs_mask], torch.ones_like(p_T[abs_mask])*.5)
+        discrete_kl_div = utils.KL_div(p_T[abs_mask], torch.ones_like(p_T[abs_mask]) * .5)
 
         return kl_div*self.loss_weight + discrete_kl_div
 

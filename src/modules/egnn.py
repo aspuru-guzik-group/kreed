@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import src.modules.distributions as dists
+from src import utils
 from src.kraitchman import ATOM_MASSES
 
 
@@ -134,7 +134,7 @@ class EGNNDynamics(nn.Module):
 
         if self.equivariance == 'rotation':
             self.norm = lambda x: x.square()
-            self.maybe_center = lambda xyz, G: dists.centered_mean(G, xyz - G.ndata["xyz"])
+            self.maybe_center = lambda xyz, G: utils.centered_mean(G, xyz - G.ndata["xyz"])
         elif self.equivariance == 'reflection':
             self.norm = lambda x: x.abs()
             self.maybe_center = lambda xyz, G: xyz

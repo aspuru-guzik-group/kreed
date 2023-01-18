@@ -2,7 +2,7 @@ import torch
 
 from src.datamodules import GEOMDatamodule
 from src.modules import EGNNDynamics, EnEquivariantDDPM, KraitchmanClassifier
-from src.modules.distributions import assert_centered_mean
+from src.utils import assert_centered_mean
 
 
 def test_diffusion():

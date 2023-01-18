@@ -1,14 +1,15 @@
 import pathlib
 import random
-import numpy as np
+
 import dgl
 import lightning_lite
+import numpy as np
 import pytorch_lightning as pl
 import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
-import src.modules.distributions as dists
+from src import utils
 from src.kraitchman import rotated_to_principal_axes
 
 
@@ -58,7 +59,7 @@ class GEOMDataset(Dataset):
         random.shuffle(self.conformations)
         self.tol = tol
         self.center_mean = center_mean
-        self.overfit_samples = len(conformations)+1 if overfit_samples is None else overfit_samples
+        self.overfit_samples = len(conformations) + 1 if overfit_samples is None else overfit_samples
         self.carbon_only = carbon_only
 
     def __len__(self):
@@ -101,18 +102,18 @@ class GEOMDataset(Dataset):
         # Zero out non-carbons (later, zero out imaginary unsigned coordinates)
         abs_xyz[~abs_mask, :] = 0.0
 
-        G.ndata['signs'] = torch.where(abs_xyz == 0.0, 0.0, G.ndata['xyz'] / abs_xyz) # (N 3)
+        G.ndata['signs'] = torch.where(abs_xyz == 0.0, 0.0, G.ndata['xyz'] / abs_xyz)  # (N 3)
 
-        G.ndata['free_xyz'] = torch.where(G.ndata['signs'] == 0.0, G.ndata['xyz'], 0.0) # (N 3)
-        G.ndata['free_mask'] = (abs_xyz == 0.0) # (N 3)
+        G.ndata['free_xyz'] = torch.where(G.ndata['signs'] == 0.0, G.ndata['xyz'], 0.0)  # (N 3)
+        G.ndata['free_mask'] = (abs_xyz == 0.0)  # (N 3)
 
-        G.ndata["abs_xyz"] = abs_xyz # (N 3)
-        G.ndata["abs_mask"] = (abs_xyz != 0.0) # (N 3)
-        G.ndata["abs_node_mask"] = abs_mask # (N )
+        G.ndata["abs_xyz"] = abs_xyz  # (N 3)
+        G.ndata["abs_mask"] = (abs_xyz != 0.0)  # (N 3)
+        G.ndata["abs_node_mask"] = abs_mask  # (N )
 
         if self.center_mean:
             # Center molecule coordinates to 0 CoM subspace
-            G.ndata["xyz"] = dists.centered_mean(G, G.ndata["xyz"])
+            G.ndata["xyz"] = utils.centered_mean(G, G.ndata["xyz"])
 
         # Record GEOM ID
         G.ndata["id"] = torch.full((n,), geom_id)  # hack to store graph-level data
@@ -149,7 +150,7 @@ class GEOMDatamodule(pl.LightningDataModule):
         # idx 4-6: xyz
         with open(data_dir / "conformations.npy", 'rb') as f:
             conformations = np.load(f)
-            
+
         smiles_id = conformations[:, 0].astype(int)
         conformers = conformations[:, 1:]
 
