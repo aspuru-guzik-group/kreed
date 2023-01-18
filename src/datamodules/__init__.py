@@ -1,1 +1,1 @@
-from src.datamodules.geom import GEOMDatamodule
+from src.datamodules.qm9 import QM9Datamodule

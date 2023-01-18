@@ -22,6 +22,8 @@ def preprocess_qm9(min_atoms):
     qm9_smiles = []
     qm9_coords = []
 
+    start_idx = 0
+
     for batch_idx, batch in enumerate(qm9_unpacker()):
 
         for smiles, batch_metadata in batch.items():
@@ -33,13 +35,14 @@ def preprocess_qm9(min_atoms):
                 continue
 
             info = [
-                len(qm9_coords),  # start index
+                start_idx,  # start index
                 len(qm9_smiles),  # SMILES id
                 c["geom_id"],  # GEOM id
             ]
 
             coords = np.array(c["xyz"], dtype=np.float32)  # (n, 4) where txyz[i] = [atom_type, x, y, z]
 
+            start_idx += coords.shape[0]
             qm9_metadata.append(info)
             qm9_smiles.append(smiles)
             qm9_coords.append(coords)
