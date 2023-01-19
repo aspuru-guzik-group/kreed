@@ -1,5 +1,3 @@
-import abc
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -20,19 +18,7 @@ def polynomial_schedule(timesteps, s=1e-5, power=2.0):
     return (1 - 2 * s) * alphas2 + s
 
 
-class BaseNoiseSchedule(nn.Module):
-
-    @abc.abstractmethod
-    def forward(self, t):
-        raise NotImplementedError()
-
-    def sweep(self, num_steps):
-        t = torch.linspace(1, num_steps, num_steps) / num_steps
-        gamma = self.forward(t.unsqueeze(-1)).squeeze(-1)
-        return t, gamma
-
-
-class FixedNoiseSchedule(BaseNoiseSchedule):
+class NoiseSchedule(nn.Module):
 
     def __init__(self, shape, timesteps, precision):
         super().__init__()
@@ -52,5 +38,5 @@ class FixedNoiseSchedule(BaseNoiseSchedule):
         self.register_buffer("gammas", gammas.float())
 
     def forward(self, t):
-        assert t.dtype == t.long()
-        return self.gamma[t]
+        assert not torch.is_floating_point(t)
+        return self.gammas[t.long()]

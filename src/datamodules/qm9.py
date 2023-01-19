@@ -89,8 +89,8 @@ class QM9Dataset(Dataset):
         # Zero out non-carbons (later, zero out imaginary unsigned coordinates)
         abs_xyz[~abs_mask, :] = 0.0
 
-        G.ndata["abs_xyz"] = abs_xyz  # (N 3)
-        G.ndata["abs_mask"] = abs_mask  # (N)
+        G.ndata["cond_labels"] = abs_xyz  # (N 3)
+        G.ndata["cond_mask"] = abs_mask  # (N)
 
         # Potentially filter atoms
         filter_mask = torch.full_like(atom_nums, True, dtype=torch.bool)
@@ -104,7 +104,7 @@ class QM9Dataset(Dataset):
 
         if self.zero_com:
             # Center molecule coordinates to 0 CoM subspace
-            G.ndata["xyz"] = utils.centered_mean(G, G.ndata["xyz"])
+            G.ndata["xyz"] = utils.zeroed_com(G, G.ndata["xyz"])
 
         # Record GEOM ID
         G.ndata["id"] = torch.full((G.number_of_nodes(),), geom_id)  # hack to store graph-level data

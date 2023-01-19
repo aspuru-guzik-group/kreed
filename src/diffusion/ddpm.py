@@ -1,521 +1,264 @@
+from typing import Literal
+
 import dgl
 import numpy as np
+import pydantic
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from src import utils
-from src.modules.schedules import LearnedNoiseSchedule, FixedNoiseSchedule
+from src.diffusion.dynamics import EquivariantDynamics
+from src.modules import NoiseSchedule, KraitchmanClassifier
 
 
-def alphas_cumprod(gamma):
-    return torch.sigmoid(-gamma)
+class EquivariantDDPMConfig(pydantic.BaseModel):
+    """Configuration object for the DDPM."""
 
+    equivariance: Literal["e3", "reflect"] = "e3"
 
-def SNR(gamma):
-    return torch.exp(-gamma)
+    # ===========
+    # EGNN Fields
+    # ===========
+
+    d_egnn_atom_vocab: int = 16
+    d_egnn_hidden: int = 256
+    n_egnn_layers: int = 4
+
+    # ===============
+    # Schedule Fields
+    # ===============
+
+    timesteps: int = 1000
+    noise_shape: str = "polynomial_2"
+    noise_precision: float = 1e-5
+
+    # =================
+    # Classifier Fields
+    # =================
+
+    guidance: bool = True
+    guidance_stdev: float = 1.0
+    guidance_stable_pi: bool = True
 
 
 class EnEquivariantDDPM(nn.Module):
-    """The E(n) Diffusion Module.
-    """
 
-    def __init__(
-        self,
-        dynamics,
-        classifier,
-        timesteps=1000,
-        noise_shape="polynomial_2",
-        noise_precision=0.08,
-        loss_type="L2",
-    ):
+    def __init__(self, config: EquivariantDDPMConfig):
         super().__init__()
 
-        assert loss_type in {"VLB", "L2"}
+        self.config = config
+        cfg = config
 
-        # The network that will predict the denoising.
-        self.dynamics = dynamics
-        self.classifier = classifier
+        self.dynamics = EquivariantDynamics(
+            equivariance=cfg.equivariance,
+            d_atom_vocab=cfg.d_egnn_atom_vocab,
+            d_hidden=cfg.d_egnn_hidden,
+            n_layers=cfg.n_egnn_layers,
+        )
 
-        self.T = timesteps
-        self.loss_type = loss_type
-
-        if noise_shape == "learned":
-            assert (loss_type == "VLB"), "A noise schedule can only be learned with a vlb objective."
-            self.gamma = LearnedNoiseSchedule()
+        if cfg.guidance:
+            self.classifier = KraitchmanClassifier(scale=cfg.guidance_stdev, stable=cfg.guidance_stable_pi)
         else:
-            self.gamma = FixedNoiseSchedule(noise_shape, timesteps=self.T, precision=noise_precision)
+            self.classifier = None
 
-    def broadcast_step(self, G, step):
-        if isinstance(step, int):
-            step = step / self.T  # normalize
-        if isinstance(step, float):
-            step = torch.full([G.batch_size, 1], step, device=G.device)
+        if self.dynamics.is_e3:
+            self.maybe_zeroed_com = utils.zeroed_com
+            self.maybe_assert_zeroed_com = utils.assert_zeroed_com
         else:
-            assert step.shape == (G.batch_size, 1)
-        return step
+            self.maybe_zeroed_com = lambda G, xyz: xyz
+            self.maybe_assert_zeroed_com = lambda G, xyz=None: None
 
-    def dist_q_Gt_given_Gs(self, G_s, s, t):
-        """Computes the mean and variance of q(G_t|G_s) where s < t."""
+        self.T = cfg.timesteps
+        self.gamma = NoiseSchedule(cfg.noise_shape, timesteps=self.T, precision=cfg.noise_precision)
 
-        t = self.broadcast_step(G_s, step=t)
-        gamma_t = self.gamma(t)
-        alphas_cumprod_t = alphas_cumprod(self.gamma(t))
-
-        if s == 0:
-            alphas_prod = alphas_cumprod(self.gamma(t))
+    def dimensionality(self, G):
+        if self.dynamics.is_e3:
+            return (G.batch_num_nodes() - 1) * 3
         else:
-            s = self.broadcast_step(G_s, step=s)
-            gamma_s = self.gamma(s)
-            alphas_prod = torch.exp(F.logsigmoid(-gamma_t) - F.logsigmoid(-gamma_s))
+            return G.batch_num_nodes() * 3
 
-        mean_t = dgl.broadcast_nodes(G_s, alphas_prod.sqrt()) * G_s.ndata["xyz"]  # (n_nodes, 3)
-        var_t = 1.0 - alphas_cumprod_t.squeeze(-1)  # (batch_size)
-        return mean_t, var_t
+    def broadcast_scalar(self, val, G=None):
+        if G is None:
+            return val
+        assert val.ndim == 1, val.shape
+        return dgl.broadcast_nodes(G, val).unsqueeze(-1)
 
-    def sample_randn_G_like(self, G_init, mean=None, var=None, tie_noise=False, return_noise=False):
-        """Samples from G ~ p(G_base), where p = N(mean, var), or p = N(0, I) if mean and var are not given."""
+    def sigma(self, gamma, broadcast_to=None):
+        sigma = torch.sigmoid(gamma).sqrt()
+        return self.broadcast_scalar(sigma, G=broadcast_to)
 
-        if tie_noise:
-            n_nodes = torch.unique(G_init.batch_num_nodes()).shape
-            assert n_nodes.numel() == 1  # only 1 unique graph size
-            eps = torch.randn((n_nodes.item(), 3))
-            eps = torch.cat([eps] * G_init.batch_size, dim=0)
-        else:
-            eps = torch.randn_like(G_init.ndata["xyz"])
-        eps = utils.centered_mean(G_init, eps)
+    def alpha(self, gamma, broadcast_to=None):
+        alpha = torch.sigmoid(-gamma).sqrt()
+        return self.broadcast_scalar(alpha, G=broadcast_to)
+
+    @staticmethod
+    def SNR(gamma):
+        return torch.exp(-gamma)
+
+    def sigma_and_alpha_t_given_s(self, gamma_t, gamma_s, broadcast_to=None):
+        sigma2_t_given_s = -torch.expm1(F.softplus(gamma_s) - F.softplus(gamma_t))
+
+        log_alpha2_t = F.logsigmoid(-gamma_t)
+        log_alpha2_s = F.logsigmoid(-gamma_s)
+        log_alpha2_t_given_s = log_alpha2_t - log_alpha2_s
+
+        alpha_t_given_s = torch.exp(0.5 * log_alpha2_t_given_s)
+        sigma_t_given_s = torch.sqrt(sigma2_t_given_s)
+
+        values = (sigma2_t_given_s, sigma_t_given_s, alpha_t_given_s)
+        return tuple(self.broadcast_scalar(x, G=broadcast_to) for x in values)
+
+    def sample_randn_G_like(self, G_init, mean=None, std=None, return_noise=False):
+        eps = torch.randn_like(G_init.ndata["xyz"])
+        eps = self.maybe_zeroed_com(G_init, eps)
 
         G = G_init.local_var()
-        if (mean is None) and (var is None):
+        if (mean is None) and (std is None):
             G.ndata["xyz"] = eps
         else:
-            assert (mean is not None) and (var is not None)
-            std = dgl.broadcast_nodes(G, var.sqrt())
-            std = torch.broadcast_to(std.unsqueeze(-1), mean.shape)
-            G.ndata["xyz"] = mean + std * eps
+            assert (mean is not None) and (std is not None)
+            G.ndata["xyz"] = mean + (std * eps)
+        self.maybe_assert_zeroed_com(G)
 
-        utils.assert_centered_mean(G, G.ndata["xyz"])
         return G if not return_noise else (G, eps)
 
-    def sample_q_Gt_given_Gs(self, G_s, s, t, return_noise=False):
-        """Samples from G_t ~ q(G_t|G_s), where s < t."""
-
-        mu_t, var_t = self.dist_q_Gt_given_Gs(G_s=G_s, s=s, t=t)
-        return self.sample_randn_G_like(G_init=G_s, mean=mu_t, var=var_t, tie_noise=False, return_noise=return_noise)
-
-    def sample_p_Gtm1_given_Gt(self, G_t, t: int, tie_noise=False, guidance_scale=0.0):
-        """Samples from G_{t-1} ~ p(G_{t-1}|G_t)."""
-
-        last_step = (t == 1)
-
-        t = self.broadcast_step(G=G_t, step=t)
-        tm1 = t - (1 / self.T)  # t - 1
-
+    def sample_p_Gs_given_Gt(self, G_t, s, t, guidance_scale=0.0):
+        gamma_s = self.gamma(s)
         gamma_t = self.gamma(t)
-        alphas_cumprod_t = alphas_cumprod(gamma_t)
-        alphas_cumprod_tm1 = alphas_cumprod(self.gamma(tm1))
-        alphas_t = alphas_cumprod_t / alphas_cumprod_tm1
 
-        scale = (1.0 - alphas_t) / (1.0 - alphas_cumprod_t).sqrt()
-        noise = self.dynamics(G=G_t, t=t)
+        sigma2_t_given_s, sigma_t_given_s, alpha_t_given_s = (
+            self.sigma_and_alpha_t_given_s(gamma_t, gamma_s, broadcast_to=G_t)
+        )
 
-        # sanity check
-        utils.assert_centered_mean(G_t, G_t.ndata["xyz"])
-        utils.assert_centered_mean(G_t, noise)
+        sigma_s = self.sigma(gamma_s, broadcast_to=G_t)
+        sigma_t = self.sigma(gamma_t, broadcast_to=G_t)
 
-        mean = (G_t.ndata["xyz"] - dgl.broadcast_nodes(G_t, scale) * noise) / dgl.broadcast_nodes(G_t, alphas_t.sqrt())
-        if last_step:
-            var = SNR(-0.5 * gamma_t)
-        else:
-            var = (1.0 - alphas_t) * (1.0 - alphas_cumprod_tm1) / (1 - alphas_cumprod_t)
-        var = var.squeeze(-1)
+        eps_t = self.dynamics(G=G_t, t=(t.float() / self.T))
+        mu = (G_t.ndata["xyz"] / alpha_t_given_s) - ((sigma2_t_given_s / alpha_t_given_s / sigma_t) * eps_t)
+        sigma = sigma_t_given_s * sigma_s / sigma_t
 
         # Classifier guidance (if applicable)
         if (self.classifier is not None) and (guidance_scale > 0.0):
             G_mean = G_t.local_var()
-            G_mean.ndata["xyz"] = mean
+            G_mean.ndata["xyz"] = mu
 
             g = self.classifier.grad_log_p_y_given_Gt(G_t=G_mean)
-            g = g.clip(min=-1.0, max=1.0)
+            g = g.clip(min=-100.0, max=100.0)
 
-            mean = mean + (guidance_scale * var * g)
-            mean = utils.centered_mean(G_t, mean)
+            mu = mu + (guidance_scale * sigma.square() * g)
+            mu = self.maybe_zeroed_com(G_t, mu)
 
-        # Sample next coordinates
-        return self.sample_randn_G_like(G_init=G_t, mean=mean, var=var, tie_noise=tie_noise)
+        return self.sample_randn_G_like(G_t, mean=mu, std=sigma)
+
+    def sample_p_G_given_G0(self, G_0):
+        zeros = torch.zeros([G_0.batch_size], dtype=torch.int, device=G_0.device)
+        gamma_0 = self.gamma(zeros)
+
+        sigma_0 = self.sigma(gamma_0, broadcast_to=G_0)
+        alpha_0 = self.alpha(gamma_0, broadcast_to=G_0)
+
+        eps = self.dynamics(G_0, t=zeros.float())
+        mu = 1.0 / alpha_0 * (G_0.ndata["xyz"] - sigma_0 * eps)
+        sigma = self.broadcast_scalar(self.SNR(-0.5 * gamma_0), G=G_0)
+
+        return self.sample_randn_G_like(G_0, mean=mu, std=sigma)
 
     @torch.no_grad()
-    def sample_p_G0(self, G_init, tie_noise=False, keep_frames=None, guidance_scale=0.0):
-        """Draw samples from the generative model."""
-
-        G_T = self.sample_randn_G_like(G_init, tie_noise=tie_noise)
-        utils.assert_centered_mean(G_T, G_T.ndata["xyz"])
+    def sample_p_G(self, G_init, keep_frames=None, guidance_scale=0.0):
+        G_T = self.sample_randn_G_like(G_init)
+        self.maybe_assert_zeroed_com(G_T)
 
         frames = {self.T: G_T}
 
-        # Iteratively sample p(z_s | z_t) for t = 1, ..., T, with s = t - 1.
         G_t = G_T
-        for t in range(self.T, 0, -1):
-            G_t = self.sample_p_Gtm1_given_Gt(G_t=G_t, t=t, tie_noise=tie_noise, guidance_scale=guidance_scale)
-            if (keep_frames is not None) and (t in keep_frames):
-                frames[t] = G_t
-        utils.assert_centered_mean(G_t, G_t.ndata["xyz"])  # sanity check
+        for step in reversed(range(0, self.T)):
+            s = torch.full([G_T.batch_size], fill_value=step, device=G_T.device)
+            G_t = self.sample_p_Gs_given_Gt(G_t=G_t, s=s, t=(s + 1), guidance_scale=guidance_scale)
+            if (keep_frames is not None) and (step in keep_frames):
+                frames[step] = G_t
+        G = self.sample_p_G_given_G0(G_t)
+        self.maybe_assert_zeroed_com(G)  # sanity check
 
-        frames[0] = G_t
+        frames[-1] = G
 
         if keep_frames is None:
-            return G_t
+            return G
         else:
-            return G_t, frames
+            return G, frames
 
-    def noise_error(self, G, pred_eps, true_eps, reduction):
+    def mse_error(self, G, input, target, reduction):
         with G.local_scope():
-            G.ndata["error"] = (pred_eps - true_eps).square()
+            G.ndata["error"] = (input - target).square()
             if reduction == "sum":
                 error = dgl.sum_nodes(G, "error").sum(dim=-1)
             elif reduction == "mean":
                 error = dgl.mean_nodes(G, "error").mean(dim=-1)
             else:
-                error = G.ndata["error"]
+                raise ValueError()
         return error
 
-    def log_norm_const_p_G0_given_G1(self, G_0):
-        """Computes the log-normalizing constant of p(G_0|G_1)."""
-
-        # Recall that var_x = (1 - bar{alpha}_1) / bar{alpha}_1 = 1/SNR(gamma_1) = 1/exp(-gamma_1).
-        ones = torch.ones([G_0.batch_size], device=G_0.device)
-        log_var_1 = self.gamma(ones)
-        d = (G_0.batch_num_nodes() - 1) * 3
-        return -0.5 * d * (np.log(2 * np.pi) + log_var_1)
-
-    def prior_matching_loss(self, G_0):
-        """Computes KL[q(G_T|G_0)||p(G_0)] where p(G_0) ~ Normal(0, I) is the prior."""
-
-        mu_T, var_T = self.dist_q_Gt_given_Gs(G_s=G_0, s=0, t=self.T)
-        zeros, ones = torch.zeros_like(mu_T), torch.ones_like(var_T)
-        kl_div = utils.subspace_gaussian_KL_div(G_0, mu_T, var_T, zeros, ones)
-        return kl_div
-
-    def forward(self, G_0):
-        """Computes an estimator for the variational lower bound, or the simple loss (MSE)."""
-
-        # This part is about whether to include loss term 0 always.
-        if self.training:
-            # estimator = loss_tm1,           where t ~ U({1, ..., T})
-            lowest_t = 1
-        else:
-            # loss_0 will be computed separately.
-            # estimator = loss_0 + loss_tm1,  where t ~ U({2, ..., T})
-            lowest_t = 2
-
-        # Sample a timestep t
-        t_int = torch.randint(lowest_t, self.T + 1, size=[G_0.batch_size, 1], device=G_0.device)
-        t = t_int / self.T
+    def simple_losses(self, G):
+        t = torch.randint(0, self.T + 1, size=[G.batch_size], dtype=torch.int, device=G.device)
 
         gamma_t = self.gamma(t)
-        gamma_tm1 = self.gamma(t - (1 / self.T))
+        alpha_t = self.alpha(gamma_t, broadcast_to=G)
+        sigma_t = self.sigma(gamma_t, broadcast_to=G)
 
-        SNR_weight = SNR(gamma_tm1 - gamma_t) - 1
-        SNR_weight = torch.where(t_int == 1, 1, SNR_weight).squeeze(-1)  # w(0) = 1
+        mu_t = alpha_t * G.ndata["xyz"]
+        G_t, eps_true = self.sample_randn_G_like(G, mean=mu_t, std=sigma_t, return_noise=True)
+        eps_pred = self.dynamics(G=G_t, t=(t.float() / self.T))
 
-        # sample G_t
-        G_t, eps = self.sample_q_Gt_given_Gs(G_s=G_0, s=0, t=t, return_noise=True)
+        return self.mse_error(G=G_t, input=eps_pred, target=eps_true, reduction="mean")
 
-        # Neural net prediction.
-        pred_eps = self.dynamics(G=G_t, t=t)
+    def log_norm_const_p_G_given_G0(self, G):
+        zeros = torch.zeros([G.batch_size], dtype=torch.int, device=G.device)
+        gamma_0 = self.gamma(zeros)
 
-        # The KL between q(z1 | x) and p(z1) = Normal(0, 1). Should be close to zero.
-        loss_prior = self.prior_matching_loss(G_0=G_0)
+        d = self.dimensionality(G)
+        return -0.5 * d * (np.log(2 * np.pi) + gamma_0)
 
-        # Combining the terms
-        if self.training:
+    def prior_matching_loss(self, G):
+        T = torch.full([G.batch_size], fill_value=self.T, device=G.device)
 
-            use_l2 = (self.loss_type == "L2")
+        gamma_T = self.gamma(T)
+        alpha_T = self.alpha(gamma_T, broadcast_to=G)
 
-            error = self.noise_error(G_t, pred_eps=pred_eps, true_eps=eps, reduction="mean")
-            loss_tm1 = 0.5 * (1.0 if use_l2 else SNR_weight) * error
+        mu_T = alpha_T * G.ndata["xyz"]
+        sigma_T = self.sigma(gamma_T)
 
-            if use_l2:
-                loss = loss_prior + loss_tm1
-            else:
-                neg_log_Z = -self.log_norm_const_p_G0_given_G1(G_0=G_0)
-                loss = loss_prior + (self.T * loss_tm1) + neg_log_Z
+        zeros, ones = torch.zeros_like(mu_T), torch.ones_like(sigma_T)
+        return utils.gaussian_KL_div(G, mu_T, sigma_T, zeros, ones, d=self.dimensionality(G))
 
-        else:
+    def nlls(self, G):
+        t = torch.randint(1, self.T + 1, size=[G.batch_size], device=G.device)
+        s = t - 1
 
-            error = self.noise_error(G_t, pred_eps=pred_eps, true_eps=eps, reduction="sum")
-            loss_tm1 = 0.5 * SNR_weight * error
-
-            t_1 = torch.ones_like(t) / self.T
-            G_1, eps = self.sample_q_Gt_given_Gs(G_s=G_0, s=0, t=t_1, return_noise=True)
-            pred_eps = self.dynamics(G=G_1, t=t_1)
-            error = self.noise_error(G_t, pred_eps=pred_eps, true_eps=eps, reduction="sum")
-
-            loss_0 = (0.5 * error) - self.log_norm_const_p_G0_given_G1(G_0=G_0)
-            loss = loss_prior + ((self.T - 1) * loss_tm1) + loss_0
-
-        return loss
-
-class RefEquivariantDDPM(torch.nn.Module):
-    """The Reflection-Equivariant Diffusion Module.
-
-    Changes from Rotation-equivariant:
-    - does not mean-center the noise, because we don't want translation equivariance
-    - predicts Bernoulli transition probabilities p_t for signs (for abs nodes, carbons)
-    - predicts 3D denoising steps only for free nodes (noncarbons)
-    - loss = (loss for 3D diffusion)*loss_weight + (loss for sign diffusion)
-    """
-
-    def __init__(
-        self,
-        dynamics,
-        timesteps=1000,
-        noise_shape="polynomial_2",
-        noise_precision=0.08,
-        loss_type="L2",
-        loss_weight=1.0,
-    ):
-        super().__init__()
-
-        assert loss_type in {"VLB", "L2"}
-
-        # The network that will predict the denoising.
-        self.dynamics = dynamics
-
-        self.T = timesteps
-        self.loss_type = loss_type
-        self.loss_weight = loss_weight
-
-        if noise_shape == "learned":
-            assert (loss_type == "VLB"), "A noise schedule can only be learned with a vlb objective."
-            self.gamma = LearnedNoiseSchedule()
-        else:
-            self.gamma = FixedNoiseSchedule(noise_shape, timesteps=self.T, precision=noise_precision)
-
-    def broadcast_step(self, G, step):
-        if isinstance(step, int):
-            step = step / self.T  # normalize
-        if isinstance(step, float):
-            step = torch.full([G.batch_size, 1], step, device=G.device)
-        else:
-            assert step.shape == (G.batch_size, 1)
-        return step
-
-
-    def dist_q_Gt_given_Gs(self, G_s, s, t):
-        """Computes the mean and variance of q(G_t|G_s) where s < t.
-        and Bernoulli transition probabilities p_t"""
-
-        t = self.broadcast_step(G_s, step=t)
+        gamma_s = self.gamma(s)
         gamma_t = self.gamma(t)
-        alphas_cumprod_t = alphas_cumprod(self.gamma(t))
+        alpha_t = self.alpha(gamma_t, broadcast_to=G)
+        sigma_t = self.sigma(gamma_t, broadcast_to=G)
 
-        if s == 0:
-            alphas_prod = alphas_cumprod(self.gamma(t))
-        else:
-            s = self.broadcast_step(G_s, step=s)
-            gamma_s = self.gamma(s)
-            alphas_prod = torch.exp(F.logsigmoid(-gamma_t) - F.logsigmoid(-gamma_s))
+        mu_t = alpha_t * G.ndata["xyz"]
+        G_t, eps_true = self.sample_randn_G_like(G, mean=mu_t, std=sigma_t, return_noise=True)
+        eps_pred = self.dynamics(G=G_t, t=(t.float() / self.T))
 
-        mean_t = dgl.broadcast_nodes(G_s, alphas_prod.sqrt()) * G_s.ndata["xyz"]  # (n_nodes, 3)
+        SNR_weight = self.SNR(gamma_s - gamma_t) - 1
+        error = self.mse_error(G=G_t, input=eps_pred, target=eps_true, reduction="sum")
+        loss_tge0 = 0.5 * SNR_weight * error
 
-        # p_t = alpha_bar * sign_flips + (1-alpha_bar)/2
-        # i.e. alpha_bar determines interpolation between no sign_flips (all 1s) and 50% probability for all sign flips (all 0.5s)
-        sign_flips = torch.ones_like(G_s.ndata['signs'])
-        p_t = dgl.broadcast_nodes(G_s, alphas_prod) * sign_flips + (1-dgl.broadcast_nodes(G_s, alphas_prod)) / 2
-        var_t = 1.0 - alphas_cumprod_t.squeeze(-1)  # (batch_size)
+        loss_prior = self.prior_matching_loss(G)
 
-        return mean_t, var_t, p_t
+        zeros = torch.zeros_like(s)
+        gamma_0 = self.gamma(zeros)
+        alpha_0 = self.alpha(gamma_0, broadcast_to=G)
+        sigma_0 = self.sigma(gamma_0, broadcast_to=G)
 
-    def sample_randn_G_like(self, G_init, mean=None, var=None, p=None, tie_noise=False, return_noise=False):
-        """Samples from G ~ p(G_base), where p = N(mean, var), or p = N(0, I) if mean and var are not given.
-        
-        Ignores abs nodes in mean and ignores free nodes in p."""
+        mu_0 = alpha_0 * G.ndata["xyz"]
+        G_0, eps_true = self.sample_randn_G_like(G, mean=mu_0, std=sigma_0, return_noise=True)
+        eps_pred = self.dynamics(G=G_0, t=zeros.float())
 
-        if tie_noise:
-            n_nodes = torch.unique(G_init.batch_num_nodes()).shape
-            assert n_nodes.numel() == 1  # only 1 unique graph size
-            eps = torch.randn((n_nodes.item(), 3))
-            eps = torch.cat([eps] * G_init.batch_size, dim=0)
-        else:
-            eps = torch.randn_like(G_init.ndata["xyz"])
+        error = self.mse_error(G=G_0, input=eps_pred, target=eps_true, reduction="sum")
+        loss_0 = 0.5 * error
 
-        eps = torch.where(G_init.ndata['free_mask'], eps, 0.0)
-
-        G = G_init.local_var()
-        if (mean is None) and (var is None) and (p is None):
-            G.ndata["free_xyz"] = torch.where(G.ndata['free_mask'], eps, 0.0) # zero out abs nodes
-
-            sign_flips_01 = torch.bernoulli(0.5 * torch.ones_like(G.ndata['signs']))
-        else:
-            assert (mean is not None) and (var is not None) and (p is not None)
-            std = dgl.broadcast_nodes(G, var.sqrt())
-            std = torch.broadcast_to(std.unsqueeze(-1), mean.shape)
-            G.ndata["free_xyz"] = torch.where(G.ndata['free_mask'], mean + std * eps, 0.0) # zero out abs nodes
-            
-            sign_flips_01 = torch.bernoulli(p)
-
-        # signs: 0 | 1  -->  -1 | +1
-        sign_flips_p1m1 = 2*sign_flips_01 - 1.0
-        G.ndata['signs'] = torch.where(G.ndata['abs_mask'], G.ndata['signs'] * sign_flips_p1m1, 0.0) # zero out free nodes
-        G.ndata['xyz'] = G.ndata['signs'] * G.ndata['abs_xyz'] + G.ndata['free_xyz']
-        return G if not return_noise else (G, eps, sign_flips_p1m1)
-
-    def sample_q_Gt_given_Gs(self, G_s, s, t, return_noise=False):
-        """Samples from G_t ~ q(G_t|G_s), where s < t."""
-
-        mu_t, var_t, p_t = self.dist_q_Gt_given_Gs(G_s=G_s, s=s, t=t)
-        return self.sample_randn_G_like(G_init=G_s, mean=mu_t, var=var_t, p=p_t, tie_noise=False, return_noise=return_noise)
-
-    def sample_p_Gtm1_given_Gt(self, G_t, t: int, tie_noise=False):
-        """Samples from G_{t-1} ~ p(G_{t-1}|G_t)."""
-
-        last_step = (t == 1)
-
-        t = self.broadcast_step(G=G_t, step=t)
-        tm1 = t - (1 / self.T)  # t - 1
-
-        gamma_t = self.gamma(t)
-        alphas_cumprod_t = alphas_cumprod(gamma_t)
-        alphas_cumprod_tm1 = alphas_cumprod(self.gamma(tm1))
-        alphas_t = alphas_cumprod_t / alphas_cumprod_tm1
-
-        scale = (1.0 - alphas_t) / (1.0 - alphas_cumprod_t).sqrt()
-        noise = self.dynamics(G=G_t, t=t)
-
-        p = torch.sigmoid(noise)
-
-        mean = (G_t.ndata["xyz"] - dgl.broadcast_nodes(G_t, scale) * noise) / dgl.broadcast_nodes(G_t, alphas_t.sqrt())
-        if last_step:
-            var = SNR(-0.5 * gamma_t)
-        else:
-            var = (1.0 - alphas_t) * (1.0 - alphas_cumprod_tm1) / (1 - alphas_cumprod_t)
-        var = var.squeeze(-1)
-
-        # sample next coordinates
-        return self.sample_randn_G_like(G_init=G_t, mean=mean, var=var, p=p, tie_noise=tie_noise)
-
-    @torch.no_grad()
-    def sample_p_G0(self, G_init, tie_noise=False, keep_frames=None, guidance_scale=0.0):
-        """Draw samples from the generative model."""
-
-        G_T = self.sample_randn_G_like(G_init, tie_noise=tie_noise)
-
-        frames = {self.T: G_T}
-
-        # Iteratively sample p(z_s | z_t) for t = 1, ..., T, with s = t - 1.
-        G_t = G_T
-        for t in range(self.T, 0, -1):
-            G_t = self.sample_p_Gtm1_given_Gt(G_t=G_t, t=t, tie_noise=tie_noise)
-            if (keep_frames is not None) and (t in keep_frames):
-                frames[t] = G_t
-
-        frames[0] = G_t
-
-        if keep_frames is None:
-            return G_t
-        else:
-            return G_t, frames
-
-    def noise_error(self, G, pred_eps, true_eps, true_sign_flips, reduction):
-        with G.local_scope():
-            G.ndata["error"] = torch.where(G.ndata['free_mask'], (pred_eps - true_eps).square(), 0.0)
-            if reduction == "sum":
-                error = dgl.sum_nodes(G, "error").sum(dim=-1)
-            elif reduction == "mean":
-                error = dgl.mean_nodes(G, "error").mean(dim=-1)
-            else:
-                error = G.ndata["error"]
-        
-        abs_mask = G.ndata['abs_mask']
-        pred_sign_probs = torch.sigmoid(pred_eps[abs_mask])
-
-        # try to predict which signs were flipped
-        true_sign_targets_p1m1 = true_sign_flips
-        true_sign_targets_01 = (true_sign_targets_p1m1 + 1) / 2
-        sign_bce = F.binary_cross_entropy(pred_sign_probs, true_sign_targets_01[abs_mask], reduction=reduction)
-
-        return error*self.loss_weight + sign_bce
-
-    def log_norm_const_p_G0_given_G1(self, G_0):
-        """Computes the log-normalizing constant of p(G_0|G_1)."""
-
-        # Recall that var_x = (1 - bar{alpha}_1) / bar{alpha}_1 = 1/SNR(gamma_1) = 1/exp(-gamma_1).
-        ones = torch.ones([G_0.batch_size], device=G_0.device)
-        log_var_1 = self.gamma(ones)
-        d = G_0.ndata['free_mask'].sum()
-        return -0.5 * d * (np.log(2 * np.pi) + log_var_1)
-
-    def prior_matching_loss(self, G_0):
-        """Computes KL[q(G_T|G_0)||p(G_0)] where p(G_0) ~ Normal(0, I) is the prior."""
-
-        mu_T, var_T, p_T = self.dist_q_Gt_given_Gs(G_s=G_0, s=0, t=self.T)
-        zeros, ones = torch.zeros_like(mu_T), torch.ones_like(var_T)
-
-        kl_div = utils.gaussian_KL_div(G_0, mu_T, var_T, zeros, ones)
-
-        abs_mask = G_0.ndata['abs_mask']
-
-        discrete_kl_div = utils.KL_div(p_T[abs_mask], torch.ones_like(p_T[abs_mask]) * .5)
-
-        return kl_div*self.loss_weight + discrete_kl_div
-
-    def forward(self, G_0):
-        """Computes an estimator for the variational lower bound, or the simple loss (MSE)."""
-
-        # This part is about whether to include loss term 0 always.
-        if self.training:
-            # estimator = loss_tm1,           where t ~ U({1, ..., T})
-            lowest_t = 1
-        else:
-            # loss_0 will be computed separately.
-            # estimator = loss_0 + loss_tm1,  where t ~ U({2, ..., T})
-            lowest_t = 2
-
-        # Sample a timestep t
-        t_int = torch.randint(lowest_t, self.T + 1, size=[G_0.batch_size, 1], device=G_0.device)
-        t = t_int / self.T
-
-        gamma_t = self.gamma(t)
-        gamma_tm1 = self.gamma(t - (1 / self.T))
-
-        SNR_weight = SNR(gamma_tm1 - gamma_t) - 1
-        SNR_weight = torch.where(t_int == 1, 1, SNR_weight).squeeze(-1)  # w(0) = 1
-
-        # sample G_t
-        G_t, eps, sign_flips = self.sample_q_Gt_given_Gs(G_s=G_0, s=0, t=t, return_noise=True)
-
-        # Neural net prediction.
-        pred_eps = self.dynamics(G=G_t, t=t)
-
-        # The KL between q(z1 | x) and p(z1) = Normal(0, 1). Should be close to zero.
-        loss_prior = self.prior_matching_loss(G_0=G_0)
-
-        # Combining the terms
-        if self.training:
-
-            use_l2 = (self.loss_type == "L2")
-
-            error = self.noise_error(G_t, pred_eps=pred_eps, true_eps=eps, true_sign_flips=sign_flips, reduction="mean")
-            loss_tm1 = 0.5 * (1.0 if use_l2 else SNR_weight) * error
-
-            if use_l2:
-                loss = loss_prior + loss_tm1
-            else:
-                neg_log_Z = -self.log_norm_const_p_G0_given_G1(G_0=G_0)
-                loss = loss_prior + (self.T * loss_tm1) + neg_log_Z
-
-        else:
-
-            error = self.noise_error(G_t, pred_eps=pred_eps, true_eps=eps, true_sign_flips=sign_flips, reduction="sum")
-            loss_tm1 = 0.5 * SNR_weight * error
-
-            t_1 = torch.ones_like(t) / self.T
-            G_1, eps, sign_flips1 = self.sample_q_Gt_given_Gs(G_s=G_0, s=0, t=t_1, return_noise=True)
-            pred_eps = self.dynamics(G=G_1, t=t_1)
-            error = self.noise_error(G_t, pred_eps=pred_eps, true_eps=eps, true_sign_flips=sign_flips1, reduction="sum")
-
-            loss_0 = (0.5 * error) - self.log_norm_const_p_G0_given_G1(G_0=G_0)
-            loss = loss_prior + ((self.T - 1) * loss_tm1) + loss_0
-
-        return loss
+        return loss_prior + (self.T * loss_tge0) + loss_0 - self.log_norm_const_p_G_given_G0(G)

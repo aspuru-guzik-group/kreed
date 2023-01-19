@@ -1,5 +1,6 @@
 import collections
 import statistics
+from typing import List
 
 import dgl
 import pytorch_lightning as pl
@@ -9,57 +10,43 @@ import torch_ema
 import wandb
 from pytorch_lightning.loggers.wandb import WandbLogger
 
-from src.diffusion.configs import EquivariantDDPMConfig
-from src.diffusion.ddpm import EnEquivariantDDPM, RefEquivariantDDPM
-from src.modules import EGNNDynamics, KraitchmanClassifier
+from src.diffusion.ddpm import EnEquivariantDDPM, EquivariantDDPMConfig
 from src.visualize import html_render_molecule, html_render_trajectory
 from src.xyz2mol import xyz2mol
 
 
+class LitEquivariantDDPMConfig(EquivariantDDPMConfig):
+    """Configuration object for the Pytorch-Lightning DDPM wrapper."""
+
+    # ===============
+    # Training Fields
+    # ===============
+
+    max_epochs: int = 500
+    lr: float = 1e-4
+
+    ema_decay: float = 0.9999
+    clip_grad_norm: bool = True
+
+    # ================
+    # Sampling Fields
+    # ================
+
+    n_visualize_samples: int = 3
+    n_sample_metric_batches: int = 1
+
+    guidance_scales: List[float] = (0,)
+
+
 class LitEquivariantDDPM(pl.LightningModule):
 
-    def __init__(
-        self,
-        config: EquivariantDDPMConfig,
-    ):
+    def __init__(self, config: LitEquivariantDDPMConfig):
         super().__init__()
 
         self.save_hyperparameters()
         self.config = config
 
-        dynamics = EGNNDynamics(
-            d_atom_vocab=config.d_egnn_atom_vocab,
-            d_hidden=config.d_egnn_hidden,
-            n_layers=config.n_egnn_layers,
-            equivariance=config.equivariance,
-        )
-
-        if config.equivariance == "e3":
-            if config.clf:
-                classifier = KraitchmanClassifier(scale=config.clf_std, stable=config.clf_stable_pi)
-            else:
-                classifier = None
-
-            self.edm = EnEquivariantDDPM(
-                dynamics=dynamics,
-                classifier=classifier,
-                timesteps=config.timesteps,
-                noise_shape=config.noise_shape,
-                noise_precision=config.noise_precision,
-                loss_type=config.loss_type,
-            )
-
-        elif config.equivariance == "reflection":
-            assert not config.clf
-
-            self.edm = RefEquivariantDDPM(
-                dynamics=dynamics,
-                timesteps=config.timesteps,
-                noise_shape=config.noise_shape,
-                noise_precision=config.noise_precision,
-                loss_type=config.loss_type,
-                loss_weight=config.loss_weight,
-            )
+        self.edm = EnEquivariantDDPM(config=config)
 
         trainable_params = [p for p in self.edm.parameters() if p.requires_grad]
         self.ema = torch_ema.ExponentialMovingAverage(trainable_params, decay=config.ema_decay)
@@ -90,39 +77,38 @@ class LitEquivariantDDPM(pl.LightningModule):
         self.grad_norm_queue.append(grad_norm)
 
     def training_step(self, batch, batch_idx):
-        nll = self._step(batch, split="train")
-        if batch_idx < self.config.n_sample_metric_batches:
-            n_visualize = self.config.n_visualize_samples if (batch_idx == 0) else 0
-            self._evaluate_samples(batch, split="train", n_visualize=n_visualize)
-        return nll
+        return self._step(batch, split="train", batch_idx=batch_idx)
 
     def validation_step(self, batch, batch_idx):
         with self.ema.average_parameters():
-            nll = self._step(batch, split="val")
-            if batch_idx < self.config.n_sample_metric_batches:
-                n_visualize = self.config.n_visualize_samples if (batch_idx == 0) else 0
-                self._evaluate_samples(batch, split="val", n_visualize=n_visualize)
-            return nll
+            return self._step(batch, split="val", batch_idx=batch_idx)
 
     def test_step(self, batch, batch_idx):
         with self.ema.average_parameters():
-            nll = self._step(batch, split="test")
-            n_visualize = self.config.n_visualize_samples if (batch_idx == 0) else 0
-            self._evaluate_samples(batch, split="test", n_visualize=n_visualize)
-            return nll
+            return self._step(batch, split="test", batch_idx=batch_idx)
 
-    def _step(self, G, split):
-        nll = self.edm(G).mean()
-        self.log(f"{split}/nll", nll, batch_size=G.batch_size)
-        return nll
+    def _step(self, G, split, batch_idx):
+        if split == "train":
+            loss = self.edm.simple_losses(G).mean()
+            self.log(f"{split}/loss", loss, batch_size=G.batch_size)
+        else:
+            loss = self.edm.nlls(G).mean()
+            self.log(f"{split}/nll", loss, batch_size=G.batch_size)
 
-    def _evaluate_samples(self, G, split, n_visualize):
-        for s in self.config.guidance_scales:
-            self._evaluate_guided_samples(G=G, split=split, n_visualize=n_visualize, scale=s)
+        cfg = self.config
+        if batch_idx < cfg.n_sample_metric_batches:
+            n = cfg.n_visualize_samples if (batch_idx == 0) else 0
+            for scale in cfg.guidance_scales:
+                self._evaluate_guided_samples(G=G, split=split, n_visualize=n, scale=scale)
+
+        return loss
 
     def _evaluate_guided_samples(self, G, split, n_visualize, scale):
         folder = f"{split}/samples_scale={scale}"
-        G_sample, frames = self.edm.sample_p_G0(G_init=G, guidance_scale=scale, keep_frames=range(self.config.timesteps, 0, -1))
+
+        T = self.config.timesteps
+        keep_frames = set(range(-1, T + 1))
+        G_sample, frames = self.edm.sample_p_G(G_init=G, guidance_scale=scale, keep_frames=keep_frames)
 
         rmsd = 0.0
         stability = 0.0
@@ -141,15 +127,13 @@ class LitEquivariantDDPM(pl.LightningModule):
                         "epoch": self.current_epoch,
                     })
 
-                    atom_nums_list = []
-                    coords_list = []
-                    for t, batch in frames.items():
-                        graph = dgl.unbatch(batch)[i]
-                        atom_nums_list.append(graph.ndata["atom_nums"].cpu().numpy())
-                        coords_list.append(graph.ndata["xyz"].cpu().numpy())
+                    trajectory = []
+                    for step in reversed(range(-1, T + 1)):
+                        graph = dgl.unbatch(frames[step])[i]
+                        trajectory.append(graph.ndata["xyz"].cpu().numpy())
 
                     wandb.log({
-                        f"{folder}/anim_pred_{i}": wandb.Html(html_render_trajectory(geom_id, atom_nums_list, coords_list)),
+                        f"{folder}/anim_pred_{i}": wandb.Html(html_render_trajectory(geom_id, atom_nums, trajectory)),
                         "epoch": self.current_epoch,
                     })
 

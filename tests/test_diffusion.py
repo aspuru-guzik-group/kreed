@@ -2,7 +2,7 @@ import torch
 
 from src.datamodules import GEOMDatamodule
 from src.modules import EGNNDynamics, EnEquivariantDDPM, KraitchmanClassifier
-from src.utils import assert_centered_mean
+from src.utils import assert_zeroed_com
 
 
 def test_diffusion():
@@ -35,10 +35,10 @@ def test_diffusion():
     # Try sampling
     G_init = G_0.local_var()
     G_init.ndata["xyz"] = torch.zeros_like(G_init.ndata["xyz"])  # safety
-    G_gen, frames = ddpm.sample_p_G0(G_init=G_init, keep_frames=[3, 4])
+    G_gen, frames = ddpm.sample_p_G(G_init=G_init, keep_frames=[3, 4])
     assert len(frames) == 4
 
-    assert_centered_mean(G_gen, G_gen.ndata["xyz"])
+    assert_zeroed_com(G_gen, G_gen.ndata["xyz"])
 
 
 def test_classifier():

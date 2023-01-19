@@ -1,4 +1,5 @@
 import pathlib
+from typing import List, Optional
 
 import pydantic_cli
 import pytorch_lightning as pl
@@ -7,8 +8,44 @@ from pytorch_lightning.callbacks import ModelCheckpoint, ModelSummary
 from pytorch_lightning.loggers import WandbLogger
 
 from src.datamodules import QM9Datamodule
-from src.diffusion.configs import TrainEquivariantDDPMConfig
-from src.diffusion.lit import LitEquivariantDDPM
+from src.diffusion import LitEquivariantDDPM, LitEquivariantDDPMConfig
+
+
+class TrainEquivariantDDPMConfig(LitEquivariantDDPMConfig):
+    """Configuration object for training the DDPM."""
+
+    seed: int = 100
+    debug: bool = False
+
+    accelerator: str = "gpu"
+    devices: int = 1
+    strategy: Optional[str] = None
+
+    # =================
+    # Datamodule Fields
+    # =================
+
+    batch_size: int = 64
+    split_ratio: List[float] = (0.8, 0.1, 0.1)
+    num_workers: int = 4
+    tol: float = -1.0
+
+    carbon_only: bool = False
+    remove_Hs: bool = False
+
+    # ==============
+    # Logging Fields
+    # ==============
+
+    wandb: bool = False
+    checkpoint: bool = False
+
+    log_every_n_steps: int = 10
+    progress_bar: bool = False
+
+    class Config(pydantic_cli.DefaultConfig):
+        extra = "forbid"
+        CLI_BOOL_PREFIX = ("--enable_", "--disable_")
 
 
 def train_ddpm(config: TrainEquivariantDDPMConfig):
@@ -23,7 +60,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
     log_dir.mkdir(exist_ok=True)
 
     # Load data
-    geom = QM9Datamodule(
+    qm9 = QM9Datamodule(
         seed=cfg.seed,
         batch_size=cfg.batch_size,
         split_ratio=cfg.split_ratio,
@@ -50,7 +87,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         callbacks.append(
             ModelCheckpoint(
                 dirpath=wandb.run.dir,
-                monitor="val/loss",
+                monitor="val/nll",
                 save_top_k=3,
                 save_last=True,
             )
@@ -80,9 +117,9 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         **debug_kwargs,
     )
 
-    trainer.fit(model=ddpm, datamodule=geom)
-    trainer.validate(model=ddpm, datamodule=geom)
-    trainer.test(model=ddpm, datamodule=geom)
+    trainer.fit(model=ddpm, datamodule=qm9)
+    trainer.validate(model=ddpm, datamodule=qm9)
+    trainer.test(model=ddpm, datamodule=qm9)
 
     if cfg.wandb:
         wandb.finish()
