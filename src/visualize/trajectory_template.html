@@ -35,7 +35,7 @@ viewer = $3Dmol.createViewer(document.getElementById("3dmolviewer"),{backgroundC
 viewer.zoomTo();
     viewer.addModelsAsFrames(%s,"xyz");
     viewer.setStyle({"sphere": {"scale": 0.5}});
-    viewer.animate({"loop": "forward", "interval": 150});
+    viewer.animate({"loop": "forward", "interval": 100});
     viewer.zoomTo();
 viewer.render();
 });
