@@ -21,7 +21,7 @@ def format_as_xyzfile(atom_nums, coords):
 
 def html_render_molecule(geom_id, atom_nums, coords):
     xyzfile = format_as_xyzfile(atom_nums, coords)
-    return JS_MOLECULE_TEMPLATE % (geom_id, xyzfile)
+    return JS_MOLECULE_TEMPLATE % (geom_id, repr(xyzfile))
 
 
 def html_render_trajectory(geom_id, atom_nums, coords_trajectory):
@@ -34,4 +34,4 @@ def html_render_trajectory(geom_id, atom_nums, coords_trajectory):
     # Prepend the last frame so zoomTo works
     trajfile = format_as_xyzfile(atom_nums, coords_trajectory[-1]) + trajfile
 
-    return JS_TRAJECTORY_TEMPLATE % (geom_id, trajfile)
+    return JS_TRAJECTORY_TEMPLATE % (geom_id, repr(trajfile))
