@@ -1,34 +1,37 @@
-PTABLE = {
-    1: 'H', 5: 'B', 6: 'C', 7: 'N', 8: 'O', 9: 'F', 13: 'Al', 14: 'Si', 15: 'P', 16: 'S', 17: 'Cl', 33: 'As', 35: 'Br', 53: 'I', 80: 'Hg', 83: 'Bi'
-}
+import pathlib
 
-with open("js_template.txt", "r") as f:
-    JS_TEMPLATE = f.read()
-with open("js_anim_template.txt", "r") as f:
-    JS_ANIM_TEMPLATE = f.read()
+from rdkit.Chem import GetPeriodicTable
+
+PTABLE = GetPeriodicTable()
+
+ROOT = pathlib.Path(__file__).parent
+with open(ROOT / "molecule_template.html", "r") as f:
+    JS_MOLECULE_TEMPLATE = f.read()
+with open(ROOT / "trajectory_template.html", "r") as f:
+    JS_TRAJECTORY_TEMPLATE = f.read()
 
 
-def to_xyzfile(atom_nums, coords):
+def format_as_xyzfile(atom_nums, coords):
     xyzfile = f"{atom_nums.shape[0]}\n\n"
     for a, xyz in zip(atom_nums, coords):
         x, y, z = xyz
-        xyzfile += f"{PTABLE[int(a)]} {x} {y} {z}\n"
+        xyzfile += f"{PTABLE.GetElementSymbol(int(a))} {x} {y} {z}\n"
     return xyzfile
 
 
-def html_render(geom_id, atom_nums, coords):
-    xyzfile = to_xyzfile(atom_nums, coords)
-    return JS_TEMPLATE % (geom_id, repr(xyzfile))
+def html_render_molecule(geom_id, atom_nums, coords):
+    xyzfile = format_as_xyzfile(atom_nums, coords)
+    return JS_MOLECULE_TEMPLATE % (geom_id, xyzfile)
 
 
-def html_render_animate(geom_id, atom_nums_list, coords_list):
-    assert type(atom_nums_list) is list and type(coords_list) is list
+def html_render_trajectory(geom_id, atom_nums, coords_trajectory):
+    assert isinstance(coords_trajectory, list)
 
     trajfile = ""
-    for atom_nums, coords in zip(atom_nums_list, coords_list):
-        trajfile += to_xyzfile(atom_nums, coords)
+    for coords in coords_trajectory:
+        trajfile += format_as_xyzfile(atom_nums, coords)
 
     # Prepend the last frame so zoomTo works
-    trajfile = to_xyzfile(atom_nums_list[-1], coords_list[-1]) + trajfile
+    trajfile = format_as_xyzfile(atom_nums, coords_trajectory[-1]) + trajfile
 
-    return JS_ANIM_TEMPLATE % (geom_id, repr(trajfile))
+    return JS_TRAJECTORY_TEMPLATE % (geom_id, trajfile)

@@ -12,7 +12,7 @@ from pytorch_lightning.loggers.wandb import WandbLogger
 from src.diffusion.configs import EquivariantDDPMConfig
 from src.diffusion.ddpm import EnEquivariantDDPM, RefEquivariantDDPM
 from src.modules import EGNNDynamics, KraitchmanClassifier
-from src.visualize import html_render, html_render_animate
+from src.visualize import html_render_molecule, html_render_trajectory
 from src.xyz2mol import xyz2mol
 
 
@@ -136,8 +136,8 @@ class LitEquivariantDDPM(pl.LightningModule):
             if i < n_visualize:
                 if isinstance(self.logger, WandbLogger):
                     wandb.log({
-                        f"{folder}/true_{i}": wandb.Html(html_render(geom_id, atom_nums, coords_true)),
-                        f"{folder}/pred_{i}": wandb.Html(html_render(geom_id, atom_nums, coords_pred)),
+                        f"{folder}/true_{i}": wandb.Html(html_render_molecule(geom_id, atom_nums, coords_true)),
+                        f"{folder}/pred_{i}": wandb.Html(html_render_molecule(geom_id, atom_nums, coords_pred)),
                         "epoch": self.current_epoch,
                     })
 
@@ -149,7 +149,7 @@ class LitEquivariantDDPM(pl.LightningModule):
                         coords_list.append(graph.ndata["xyz"].cpu().numpy())
 
                     wandb.log({
-                        f"{folder}/anim_pred_{i}": wandb.Html(html_render_animate(geom_id, atom_nums_list, coords_list)),
+                        f"{folder}/anim_pred_{i}": wandb.Html(html_render_trajectory(geom_id, atom_nums_list, coords_list)),
                         "epoch": self.current_epoch,
                     })
 
