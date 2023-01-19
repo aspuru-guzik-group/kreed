@@ -1,4 +1,4 @@
- import dgl
+import dgl
 import dgl.function as fn
 import torch
 import torch.nn as nn
@@ -16,7 +16,7 @@ from src.kraitchman import ATOM_MASSES
 
 class EGNNConv(nn.Module):
 
-    def __init__(self, in_size, hidden_size, out_size, edge_feat_size=0, equivariance='rotation'):
+    def __init__(self, in_size, hidden_size, out_size, edge_feat_size=0, equivariance='e3'):
         super().__init__()
 
         self.in_size = in_size
@@ -25,7 +25,7 @@ class EGNNConv(nn.Module):
         self.edge_feat_size = edge_feat_size
         self.equivariance = equivariance
 
-        if self.equivariance == 'rotation':
+        if self.equivariance == 'e3':
             self.norm = lambda x: x.square()
         elif self.equivariance == 'reflection':
             self.norm = lambda x: x.abs()
@@ -132,7 +132,7 @@ class EGNNDynamics(nn.Module):
         self.lin_hid = nn.Linear(6 + d_atom_vocab, d_hidden)
         self.equivariance = equivariance
 
-        if self.equivariance == 'rotation':
+        if self.equivariance == 'e3':
             self.norm = lambda x: x.square()
             self.maybe_center = lambda xyz, G: utils.centered_mean(G, xyz - G.ndata["xyz"])
         elif self.equivariance == 'reflection':

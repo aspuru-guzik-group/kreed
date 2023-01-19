@@ -50,7 +50,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         callbacks.append(
             ModelCheckpoint(
                 dirpath=wandb.run.dir,
-                monitor="val/loss",
+                monitor="val/nll",
                 save_top_k=3,
                 save_last=True,
             )

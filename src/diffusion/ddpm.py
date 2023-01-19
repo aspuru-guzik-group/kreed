@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from src import utils
-from src.modules.schedules import LearnedNoiseSchedule, FixedNoiseSchedule
+from src.modules.schedules import FixedNoiseSchedule
 
 
 def alphas_cumprod(gamma):
