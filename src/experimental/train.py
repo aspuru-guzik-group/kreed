@@ -6,12 +6,10 @@ import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint, ModelSummary
 from pytorch_lightning.loggers import WandbLogger
 
-import sys
-sys.path.append('.')
-
-from src.datamodules import GEOMDatamodule
+from src.datamodules import QM9Datamodule
 from src.diffusion.configs import TrainEquivariantDDPMConfig
-from src.diffusion.model import LitEquivariantDDPM
+from src.diffusion.lit import LitEquivariantDDPM
+
 
 def train_ddpm(config: TrainEquivariantDDPMConfig):
     cfg = config
@@ -23,31 +21,24 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
     root = pathlib.Path(__file__).parents[2]
     log_dir = root / "logs"
     log_dir.mkdir(exist_ok=True)
-    
-    overfit_samples = 1000 if cfg.debug else None
 
     # Load data
-    geom = GEOMDatamodule(
+    geom = QM9Datamodule(
         seed=cfg.seed,
         batch_size=cfg.batch_size,
         split_ratio=cfg.split_ratio,
         num_workers=cfg.num_workers,
         tol=cfg.tol,
-        center_mean=(cfg.equivariance=='rotation'),
-        overfit_samples=overfit_samples,
+        zero_com=(cfg.equivariance == "e3"),
         carbon_only=cfg.carbon_only,
+        remove_Hs=cfg.remove_Hs,
     )
 
-    print("Datamodule loaded.")
-
     # Initialize and load model
-    ddpm = LitEquivariantDDPM(
-        config=cfg,
-        )
-    print("Model loaded.")
+    ddpm = LitEquivariantDDPM(config=cfg)
 
     if cfg.wandb:
-        project = "train_equiv_ddpm" + ("_debug" if cfg.debug else "")
+        project = "train_edm" + ("_debug" if cfg.debug else "")
         logger = WandbLogger(project=project, log_model=True, save_dir=str(log_dir))
         logger.experiment.config.update(dict(cfg))
     else:
@@ -67,13 +58,14 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
 
     if cfg.debug:
         debug_kwargs = {
+            "overfit_batches": 1000,
             "limit_train_batches": 10000,
             "limit_val_batches": 0,
             "limit_test_batches": 0,
         }
     else:
         debug_kwargs = {}
-    
+
     trainer = pl.Trainer(
         accelerator=cfg.accelerator,
         devices=cfg.devices,
@@ -87,9 +79,6 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         num_sanity_val_steps=1,
         **debug_kwargs,
     )
-
-    print("Trainer loaded.")
-    print("Beginning training...")
 
     trainer.fit(model=ddpm, datamodule=geom)
     trainer.validate(model=ddpm, datamodule=geom)

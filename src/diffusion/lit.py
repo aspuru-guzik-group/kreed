@@ -10,7 +10,8 @@ import wandb
 from pytorch_lightning.loggers.wandb import WandbLogger
 
 from src.diffusion.configs import EquivariantDDPMConfig
-from src.modules import EGNNDynamics, EnEquivariantDDPM, KraitchmanClassifier, RefEquivariantDDPM
+from src.diffusion.ddpm import EnEquivariantDDPM, RefEquivariantDDPM
+from src.modules import EGNNDynamics, KraitchmanClassifier
 from src.visualize import html_render, html_render_animate
 from src.xyz2mol import xyz2mol
 
@@ -27,13 +28,13 @@ class LitEquivariantDDPM(pl.LightningModule):
         self.config = config
 
         dynamics = EGNNDynamics(
-                d_atom_vocab=config.d_egnn_atom_vocab,
-                d_hidden=config.d_egnn_hidden,
-                n_layers=config.n_egnn_layers,
-                equivariance=config.equivariance,
-            )
+            d_atom_vocab=config.d_egnn_atom_vocab,
+            d_hidden=config.d_egnn_hidden,
+            n_layers=config.n_egnn_layers,
+            equivariance=config.equivariance,
+        )
 
-        if config.equivariance == 'rotation':
+        if config.equivariance == "e3":
             if config.clf:
                 classifier = KraitchmanClassifier(scale=config.clf_std, stable=config.clf_stable_pi)
             else:
@@ -47,8 +48,9 @@ class LitEquivariantDDPM(pl.LightningModule):
                 noise_precision=config.noise_precision,
                 loss_type=config.loss_type,
             )
-            
-        elif config.equivariance == 'reflection':
+
+        elif config.equivariance == "reflection":
+            assert not config.clf
 
             self.edm = RefEquivariantDDPM(
                 dynamics=dynamics,
@@ -145,7 +147,7 @@ class LitEquivariantDDPM(pl.LightningModule):
                         graph = dgl.unbatch(batch)[i]
                         atom_nums_list.append(graph.ndata["atom_nums"].cpu().numpy())
                         coords_list.append(graph.ndata["xyz"].cpu().numpy())
-                    
+
                     wandb.log({
                         f"{folder}/anim_pred_{i}": wandb.Html(html_render_animate(geom_id, atom_nums_list, coords_list)),
                         "epoch": self.current_epoch,
@@ -162,7 +164,7 @@ class LitEquivariantDDPM(pl.LightningModule):
                 minimize=True
             )
 
-            coords_pred[:, 0] *= -1 # flip x coordinates for other enantiomer
+            coords_pred[:, 0] *= -1  # flip x coordinates for other enantiomer
 
             rmsd2 = spyrmsd.rmsd.rmsd(
                 coords1=coords_true,

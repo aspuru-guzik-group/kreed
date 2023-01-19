@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional, Union
+from typing import List, Literal, Optional
 
 import pydantic
 import pydantic_cli
@@ -7,7 +7,7 @@ import pydantic_cli
 class EquivariantDDPMConfig(pydantic.BaseModel):
     """Configuration object for the DDPM."""
 
-    equivariance: Literal["rotation", "reflection"] = "rotation"
+    equivariance: Literal["e3", "reflection"] = "e3"
 
     # ===========
     # EGNN Fields
@@ -33,29 +33,7 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
     clf_std: float = 1.0
     clf_stable_pi: bool = True
 
-
     loss_weight: float = 1.0
-
-
-class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
-    """Configuration object for training the DDPM."""
-
-    seed: int = 100
-    debug: bool = False
-    carbon_only: bool = False
-
-    accelerator: str = "gpu"
-    devices: int = 1
-    strategy: Optional[str] = None
-
-    # =================
-    # Datamodule Fields
-    # =================
-
-    batch_size: int = 64
-    split_ratio: List[float] = (0.8, 0.1, 0.1)
-    num_workers: int = 4
-    tol: float = -1.0
 
     # ===============
     # Training Fields
@@ -77,6 +55,29 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     n_sample_metric_batches: int = 1
 
     guidance_scales: List[float] = (0,)
+
+
+class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
+    """Configuration object for training the DDPM."""
+
+    seed: int = 100
+    debug: bool = False
+
+    accelerator: str = "gpu"
+    devices: int = 1
+    strategy: Optional[str] = None
+
+    # =================
+    # Datamodule Fields
+    # =================
+
+    batch_size: int = 64
+    split_ratio: List[float] = (0.8, 0.1, 0.1)
+    num_workers: int = 4
+    tol: float = -1.0
+
+    carbon_only: bool = False
+    remove_Hs: bool = False
 
     # ==============
     # Logging Fields
