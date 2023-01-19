@@ -14,6 +14,7 @@ from src.diffusion.ddpm import EnEquivariantDDPM, EquivariantDDPMConfig
 from src.visualize import html_render_molecule, html_render_trajectory
 from src.xyz2mol import xyz2mol
 
+from copy import deepcopy
 
 class LitEquivariantDDPMConfig(EquivariantDDPMConfig):
     """Configuration object for the Pytorch-Lightning DDPM wrapper."""
@@ -112,6 +113,7 @@ class LitEquivariantDDPM(pl.LightningModule):
 
         rmsd = 0.0
         stability = 0.0
+        num_mols_to_not_include_in_average_rmsd = 0
 
         for i, (G_true, G_pred) in enumerate(zip(dgl.unbatch(G), dgl.unbatch(G_sample))):
             geom_id = G_true.ndata["id"][0].item()
@@ -139,32 +141,49 @@ class LitEquivariantDDPM(pl.LightningModule):
 
             # Compute sample metrics
 
-            flipped = coords_pred.copy()
-            flipped[:, 0] *= -1  # flip x coordinates for other enantiomer
-
-            rmsds = spyrmsd.rmsd.rmsd(
-                coords1=coords_true,
-                coords2=[coords_pred, flipped],
-                atomicn1=atom_nums,
-                atomicn2=atom_nums,
-                minimize=True
-            )
-            
-            # take min(left, right) enantiomer
-            rmsd += min(rmsds)
-
             try:
                 mols = xyz2mol(
-                    atoms=atom_nums.tolist(),
-                    coordinates=coords_pred.tolist(),
-                    embed_chiral=False,
-                )
+                        atoms=atom_nums.tolist(),
+                        coordinates=coords_pred.tolist(),
+                        embed_chiral=False,
+                    )
             except ValueError:
                 mols = False
+            
+            if mols:
+                stability += 1.0
 
-            stability += (1.0 if mols else 0.0)
+                try:
+                    mols_true = xyz2mol(
+                        atoms=atom_nums.tolist(),
+                        coordinates=coords_true.tolist(),
+                        embed_chiral=False,
+                    )
+                except ValueError:
+                    mols_true = False
+                    num_mols_to_not_include_in_average_rmsd += 1 # ground truth is not stable
+                
+                if mols_true:
+                    spyrmsd_mol_true = spyrmsd.molecule.Molecule.from_rdkit(mols_true[0])
+                    spyrmsd_mol_pred = spyrmsd.molecule.Molecule.from_rdkit(mols[0])
+                    flipped = deepcopy(spyrmsd_mol_pred)
+                    flipped.coordinates[:, 0] *= -1 # flip x coordinates for other enantiomer
 
-        rmsd = rmsd / G.batch_size
+                    try:
+                        rmsds = spyrmsd.rmsd.rmsdwrapper(
+                            spyrmsd_mol_true,
+                            [spyrmsd_mol_pred, flipped],
+                            symmetry=True,
+                            minimize=True,
+                        )
+
+                        # take min(left, right) enantiomer
+                        rmsd += min(rmsds)
+                    except spyrmsd.exceptions.NonIsomorphicGraphs:
+                        num_mols_to_not_include_in_average_rmsd += 1 # predicted does not have same adjacency matrix
+                    
+
+        rmsd = rmsd / (G.batch_size - num_mols_to_not_include_in_average_rmsd)
         stability = stability / G.batch_size
 
         self.log(f"{folder}/rmsd", rmsd, batch_size=G.batch_size)
