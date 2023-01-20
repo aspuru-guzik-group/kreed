@@ -11,6 +11,7 @@ from src import utils
 from src.diffusion.dynamics import EquivariantDynamics
 from src.modules import NoiseSchedule, KraitchmanClassifier
 
+from tqdm import tqdm
 
 class EquivariantDDPMConfig(pydantic.BaseModel):
     """Configuration object for the DDPM."""
@@ -172,7 +173,7 @@ class EnEquivariantDDPM(nn.Module):
         frames = {self.T: G_T}
 
         G_t = G_T
-        for step in reversed(range(0, self.T)):
+        for step in tqdm(reversed(range(0, self.T)), desc='Sampling', leave=False, total=self.T):
             s = torch.full([G_T.batch_size], fill_value=step, device=G_T.device)
             G_t = self.sample_p_Gs_given_Gt(G_t=G_t, s=s, t=(s + 1), guidance_scale=guidance_scale)
             if (keep_frames is not None) and (step in keep_frames):

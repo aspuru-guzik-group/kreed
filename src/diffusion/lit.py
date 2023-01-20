@@ -14,7 +14,8 @@ from src.diffusion.ddpm import EnEquivariantDDPM, EquivariantDDPMConfig
 from src.visualize import html_render_molecule, html_render_trajectory
 from src.xyz2mol import xyz2mol
 
-from copy import deepcopy
+from rdkit import Chem
+from tqdm import tqdm
 
 class LitEquivariantDDPMConfig(EquivariantDDPMConfig):
     """Configuration object for the Pytorch-Lightning DDPM wrapper."""
@@ -113,9 +114,9 @@ class LitEquivariantDDPM(pl.LightningModule):
 
         rmsd = 0.0
         stability = 0.0
-        num_mols_to_not_include_in_average_rmsd = 0
+        correctness = 0.0
 
-        for i, (G_true, G_pred) in enumerate(zip(dgl.unbatch(G), dgl.unbatch(G_sample))):
+        for i, (G_true, G_pred) in tqdm(enumerate(zip(dgl.unbatch(G), dgl.unbatch(G_sample))), total=G.batch_size, desc=f"Evaluating {folder}", leave=False):
             geom_id = G_true.ndata["id"][0].item()
             atom_nums = G_true.ndata["atom_nums"].cpu().numpy()
             coords_true = G_true.ndata["xyz"].cpu().numpy()
@@ -141,50 +142,62 @@ class LitEquivariantDDPM(pl.LightningModule):
 
             # Compute sample metrics
 
-            try:
-                mols = xyz2mol(
-                        atoms=atom_nums.tolist(),
-                        coordinates=coords_pred.tolist(),
-                        embed_chiral=False,
-                    )
-            except ValueError:
-                mols = False
+            carbon_mask = (atom_nums == 6)
+            C_coords_true = coords_true[carbon_mask]
+            C_coords_pred = coords_pred[carbon_mask]
+            C_atomic_nums = atom_nums[carbon_mask]
             
-            if mols:
-                stability += 1.0
+            # take min(left, right) enantiomer
+            rmsd1 = spyrmsd.rmsd.rmsd(
+                coords1=C_coords_true,
+                coords2=C_coords_pred,
+                atomicn1=C_atomic_nums,
+                atomicn2=C_atomic_nums,
+                minimize=True
+            )
 
+            C_coords_pred[:, 0] *= -1  # flip x coordinates for other enantiomer
+
+            rmsd2 = spyrmsd.rmsd.rmsd(
+                coords1=C_coords_true,
+                coords2=C_coords_pred,
+                atomicn1=C_atomic_nums,
+                atomicn2=C_atomic_nums,
+                minimize=True
+            )
+
+            rmsd += min(rmsd1, rmsd2)
+
+            try:
+                pred_mols = xyz2mol(
+                    atoms=atom_nums.tolist(),
+                    coordinates=coords_pred.tolist(),
+                    embed_chiral=False,
+                )
+            except ValueError:
+                pred_mols = False
+
+            stability += (1.0 if pred_mols else 0.0)
+
+            if pred_mols:
                 try:
-                    mols_true = xyz2mol(
+                    true_mols = xyz2mol(
                         atoms=atom_nums.tolist(),
                         coordinates=coords_true.tolist(),
                         embed_chiral=False,
                     )
                 except ValueError:
-                    mols_true = False
-                    num_mols_to_not_include_in_average_rmsd += 1 # ground truth is not stable
+                    true_mols = False
                 
-                if mols_true:
-                    spyrmsd_mol_true = spyrmsd.molecule.Molecule.from_rdkit(mols_true[0])
-                    spyrmsd_mol_pred = spyrmsd.molecule.Molecule.from_rdkit(mols[0])
-                    flipped = deepcopy(spyrmsd_mol_pred)
-                    flipped.coordinates[:, 0] *= -1 # flip x coordinates for other enantiomer
+                if true_mols:
+                    true_smiles = Chem.MolToSmiles(true_mols[0])
+                    pred_smiles = Chem.MolToSmiles(pred_mols[0])
+                    correctness += (1.0 if true_smiles == pred_smiles else 0.0)
 
-                    try:
-                        rmsds = spyrmsd.rmsd.rmsdwrapper(
-                            spyrmsd_mol_true,
-                            [spyrmsd_mol_pred, flipped],
-                            symmetry=True,
-                            minimize=True,
-                        )
-
-                        # take min(left, right) enantiomer
-                        rmsd += min(rmsds)
-                    except spyrmsd.exceptions.NonIsomorphicGraphs:
-                        num_mols_to_not_include_in_average_rmsd += 1 # predicted does not have same adjacency matrix
-                    
-
-        rmsd = rmsd / (G.batch_size - num_mols_to_not_include_in_average_rmsd)
+        rmsd = rmsd / (G.batch_size)
         stability = stability / G.batch_size
+        correctness = correctness / G.batch_size
 
-        self.log(f"{folder}/rmsd", rmsd, batch_size=G.batch_size)
+        self.log(f"{folder}/carbon_rmsd", rmsd, batch_size=G.batch_size)
         self.log(f"{folder}/stability", stability, batch_size=G.batch_size)
+        self.log(f"{folder}/correctness", correctness, batch_size=G.batch_size)
