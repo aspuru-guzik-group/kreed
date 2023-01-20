@@ -90,7 +90,7 @@ class QM9Dataset(Dataset):
         abs_xyz[~abs_mask, :] = 0.0
 
         G.ndata["cond_labels"] = abs_xyz  # (N 3)
-        G.ndata["cond_mask"] = abs_mask  # (N)
+        G.ndata["cond_mask"] = (abs_xyz != 0)  # (N 3)
 
         # Potentially filter atoms
         filter_mask = torch.full_like(atom_nums, True, dtype=torch.bool)

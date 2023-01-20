@@ -131,7 +131,7 @@ class LitEquivariantDDPM(pl.LightningModule):
                     })
 
                     trajectory = []
-                    for step in reversed(range(-1, T + 1)):
+                    for step in tqdm(reversed(range(-1, T + 1)), desc=f"Rendering trajectory {i}", leave=False, total=T+2):
                         graph = dgl.unbatch(frames[step])[i]
                         trajectory.append(graph.ndata["xyz"].cpu().numpy())
 

@@ -17,7 +17,7 @@ class EquivariantDynamics(nn.Module):
         super().__init__()
 
         self.d_atom_vocab = d_atom_vocab
-        self.proj_h = nn.Linear(6 + d_atom_vocab, d_hidden)
+        self.proj_h = nn.Linear(8 + d_atom_vocab, d_hidden)
         self.is_e3 = (equivariance == "e3")
 
         self.eq_blocks = nn.ModuleList([
@@ -42,13 +42,13 @@ class EquivariantDynamics(nn.Module):
 
         # Conditioning features
         cond_labels = G.ndata["cond_labels"].to(xyz)  # (N 3)
-        cond_mask = G.ndata["cond_mask"].to(xyz)  # (N)
+        cond_mask = G.ndata["cond_mask"].to(xyz)  # (N 3)
 
         features = [
             atom_ids,
             atom_masses.unsqueeze(-1) / 12.0,  # FIXME: the normalization is arbitrary here
             temb.unsqueeze(-1),
-            cond_mask.unsqueeze(-1),
+            cond_mask,
             cond_labels,
         ]
 
