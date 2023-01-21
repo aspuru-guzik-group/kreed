@@ -120,6 +120,12 @@ class EnEquivariantDDPM(nn.Module):
         else:
             assert (mean is not None) and (std is not None)
             G.ndata["xyz"] = mean + (std * eps)
+        
+        # zero out nans
+        if torch.isnan(G.ndata['xyz']).any():
+            print('nan detected in sampling')
+            G.ndata['xyz'] = torch.where(torch.isnan(G.ndata['xyz']), 0.0, G.ndata['xyz'])
+                
         self.maybe_assert_zeroed_com(G)
 
         return G if not return_noise else (G, eps)
