@@ -17,6 +17,8 @@ from src.xyz2mol import xyz2mol
 from rdkit import Chem
 from tqdm import tqdm
 
+import numpy as np
+
 class LitEquivariantDDPMConfig(EquivariantDDPMConfig):
     """Configuration object for the Pytorch-Lightning DDPM wrapper."""
 
@@ -121,6 +123,8 @@ class LitEquivariantDDPM(pl.LightningModule):
             atom_nums = G_true.ndata["atom_nums"].cpu().numpy()
             coords_true = G_true.ndata["xyz"].cpu().numpy()
             coords_pred = G_pred.ndata["xyz"].cpu().numpy()
+
+            coords_pred = np.where(np.isnan(coords_pred), 0.0, coords_pred)
 
             if i < n_visualize:
                 if isinstance(self.logger, WandbLogger):
