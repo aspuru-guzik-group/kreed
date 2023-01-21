@@ -15,6 +15,8 @@ from src.visualize import html_render_molecule, html_render_trajectory
 from src.xyz2mol import xyz2mol
 
 from rdkit import Chem
+from rdkit import RDLogger
+RDLogger.DisableLog('rdApp.*')
 from tqdm import tqdm
 
 import numpy as np
@@ -37,6 +39,7 @@ class LitEquivariantDDPMConfig(EquivariantDDPMConfig):
     # ================
 
     n_visualize_samples: int = 3
+    render_every_n_steps: int = 5
     n_sample_metric_batches: int = 1
 
     guidance_scales: List[float] = (0,)
@@ -76,7 +79,7 @@ class LitEquivariantDDPM(pl.LightningModule):
         max_norm = 1.5 * statistics.mean(self.grad_norm_queue) + 2 * statistics.stdev(self.grad_norm_queue)
         self.log("max_grad_norm", max_norm)
 
-        grad_norm = torch.nn.utils.clip_grad_norm_(self.edm.parameters(), max_norm=max_norm, norm_type=2.0, error_if_nonfinite=True).item()
+        grad_norm = torch.nn.utils.clip_grad_norm_(self.edm.parameters(), max_norm=max_norm, norm_type=2.0, error_if_nonfinite=False).item()
         grad_norm = min(grad_norm, max_norm)
         self.grad_norm_queue.append(grad_norm)
 
@@ -135,9 +138,13 @@ class LitEquivariantDDPM(pl.LightningModule):
                     })
 
                     trajectory = []
-                    for step in tqdm(reversed(range(-1, T + 1)), desc=f"Rendering trajectory {i}", leave=False, total=T+2):
+                    for step in tqdm(reversed(range(-1, T + 1, self.config.render_every_n_steps)), desc=f"Rendering trajectory {i}", leave=False, total=int((T+2)/self.config.render_every_n_steps)):
                         graph = dgl.unbatch(frames[step])[i]
                         trajectory.append(graph.ndata["xyz"].cpu().numpy())
+                    
+                    # last frame
+                    graph = dgl.unbatch(frames[-1])[i]
+                    trajectory.append(graph.ndata["xyz"].cpu().numpy())
 
                     wandb.log({
                         f"{folder}/anim_pred_{i}": wandb.Html(html_render_trajectory(geom_id, atom_nums, trajectory)),
@@ -194,8 +201,8 @@ class LitEquivariantDDPM(pl.LightningModule):
                     true_mols = False
                 
                 if true_mols:
-                    true_smiles = Chem.MolToSmiles(true_mols[0])
-                    pred_smiles = Chem.MolToSmiles(pred_mols[0])
+                    true_smiles = Chem.CanonSmiles(Chem.MolToSmiles(true_mols[0]))
+                    pred_smiles = Chem.CanonSmiles(Chem.MolToSmiles(pred_mols[0]))
                     correctness += (1.0 if true_smiles == pred_smiles else 0.0)
 
         rmsd = rmsd / (G.batch_size)

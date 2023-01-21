@@ -50,7 +50,7 @@ def test_reflection_model():
 
 def test_rotation_model():
 
-    data = QM9Datamodule(100, 2, zero_com=False)
+    data = QM9Datamodule(100, 2, zero_com=True)
     G = data.datasets['train'][0]
 
     dynamics = EquivariantDynamics('e3', 16, 256, 4)
