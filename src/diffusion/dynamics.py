@@ -59,7 +59,7 @@ class EquivariantDynamics(nn.Module):
 
         with G.local_scope():
             G.apply_edges(fn.u_sub_v("xyz", "xyz", "xyz_diff"))
-            a = [LA.norm(G.edata["xyz_diff"], ord=2, dim=-1, keepdim=True)]
+            a = [LA.norm(G.edata["xyz_diff"], ord=2, dim=-1, keepdim=True).square()]
             if not self.is_e3:
                 a = a + [G.edata["xyz_diff"].abs()]
             a = torch.cat(a, dim=-1)
