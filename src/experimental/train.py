@@ -7,7 +7,7 @@ import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint, ModelSummary
 from pytorch_lightning.loggers import WandbLogger
 
-from src.datamodules import QM9Datamodule
+from src.datamodules import QM9Datamodule, GEOMDatamodule
 from src.diffusion import LitEquivariantDDPM, LitEquivariantDDPMConfig
 
 
@@ -24,6 +24,8 @@ class TrainEquivariantDDPMConfig(LitEquivariantDDPMConfig):
     # =================
     # Datamodule Fields
     # =================
+
+    dataset: str = "geom"
 
     batch_size: int = 64
     split_ratio: List[float] = (0.8, 0.1, 0.1)
@@ -60,16 +62,28 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
     log_dir.mkdir(exist_ok=True)
 
     # Load data
-    qm9 = QM9Datamodule(
-        seed=cfg.seed,
-        batch_size=cfg.batch_size,
-        split_ratio=cfg.split_ratio,
-        num_workers=cfg.num_workers,
-        tol=cfg.tol,
-        zero_com=(cfg.equivariance == "e3"),
-        carbon_only=cfg.carbon_only,
-        remove_Hs=cfg.remove_Hs,
-    )
+    if cfg.dataset == 'geom':
+        data = GEOMDatamodule(
+            seed=cfg.seed,
+            batch_size=cfg.batch_size,
+            split_ratio=cfg.split_ratio,
+            num_workers=cfg.num_workers,
+            tol=cfg.tol,
+            zero_com=(cfg.equivariance == "e3"),
+            carbon_only=cfg.carbon_only,
+            remove_Hs=cfg.remove_Hs,
+        )
+    elif cfg.dataset == 'qm9':
+        data = QM9Datamodule(
+            seed=cfg.seed,
+            batch_size=cfg.batch_size,
+            split_ratio=cfg.split_ratio,
+            num_workers=cfg.num_workers,
+            tol=cfg.tol,
+            zero_com=(cfg.equivariance == "e3"),
+            carbon_only=cfg.carbon_only,
+            remove_Hs=cfg.remove_Hs,
+        )
 
     # Initialize and load model
     ddpm = LitEquivariantDDPM(config=cfg)
@@ -117,9 +131,9 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         **debug_kwargs,
     )
 
-    trainer.fit(model=ddpm, datamodule=qm9)
-    trainer.validate(model=ddpm, datamodule=qm9)
-    trainer.test(model=ddpm, datamodule=qm9)
+    trainer.fit(model=ddpm, datamodule=data)
+    trainer.validate(model=ddpm, datamodule=data)
+    trainer.test(model=ddpm, datamodule=data)
 
     if cfg.wandb:
         wandb.finish()
