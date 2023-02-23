@@ -4,7 +4,6 @@ from typing import List
 
 import dgl
 import pytorch_lightning as pl
-import spyrmsd.rmsd
 import torch
 import torch_ema
 import wandb
@@ -12,7 +11,6 @@ from pytorch_lightning.loggers.wandb import WandbLogger
 
 from src.diffusion.ddpm import EnEquivariantDDPM, EquivariantDDPMConfig
 from src.visualize import html_render_molecule, html_render_trajectory
-from src.xyz2mol import xyz2mol
 
 from tqdm import tqdm
 
@@ -117,15 +115,23 @@ class LitEquivariantDDPM(pl.LightningModule):
         keep_frames = set(range(-1, T + 1))
         G_sample, frames = self.edm.sample_p_G(G_init=G, guidance_scale=scale, keep_frames=keep_frames)
 
-        results = []
+        abs_C_rmsds = 0.0
+        heavy_rmsds = 0.0
 
         for i, (G_true, G_pred) in tqdm(enumerate(zip(dgl.unbatch(G), dgl.unbatch(G_sample))), total=G.batch_size, desc=f"Evaluating {folder}", leave=False):
+            G_true = G_true.cpu()
+            G_pred = G_pred.cpu()
+
+            G_pred.ndata['xyz'] = torch.where(torch.isnan(G_pred.ndata['xyz']), 0.0, G_pred.ndata['xyz'])
+            
+            abs_C_rmsd, heavy_rmsd, best_flip = evaluate(G_true, G_pred)
+            abs_C_rmsds += abs_C_rmsd
+            heavy_rmsds += heavy_rmsd
+
             geom_id = G_true.ndata["id"][0].item()
             atom_nums = G_true.ndata["atom_nums"].cpu().numpy()
             coords_true = G_true.ndata["xyz"].cpu().numpy()
-            coords_pred = G_pred.ndata["xyz"].cpu().numpy()
-
-            coords_pred = np.where(np.isnan(coords_pred), 0.0, coords_pred)
+            coords_pred = (G_pred.ndata["xyz"].cpu() * best_flip).numpy()
 
             if i < n_visualize:
                 if isinstance(self.logger, WandbLogger):
@@ -149,15 +155,8 @@ class LitEquivariantDDPM(pl.LightningModule):
                         "epoch": self.current_epoch,
                     })
 
-            # Compute sample metrics
+        abs_C_rmsds /= G.batch_size
+        heavy_rmsds /= G.batch_size
+        self.log(f"{folder}/carbon_abs_rmsd", abs_C_rmsds, batch_size=G.batch_size)
+        self.log(f"{folder}/heavy_rmsd", heavy_rmsds, batch_size=G.batch_size)
 
-            results.append(evaluate(atom_nums, coords_true, coords_pred))
-
-        abs_C_rmsds, C_rmsds, stabilities, correctnesses, heavy_rmsds = zip(*results)
-        heavy_rmsds = [x for x in heavy_rmsds if x is not None]
-        self.log(f"{folder}/carbon_abs_rmsd", np.mean(abs_C_rmsds), batch_size=G.batch_size)
-        self.log(f"{folder}/carbon_rmsd", np.mean(C_rmsds), batch_size=G.batch_size)
-        self.log(f"{folder}/stability", np.mean(stabilities), batch_size=G.batch_size)
-        self.log(f"{folder}/correctness", np.mean(correctnesses), batch_size=G.batch_size)
-        if heavy_rmsds != []:
-            self.log(f"{folder}/heavy_rmsd", np.mean(heavy_rmsds), batch_size=len(heavy_rmsds))
