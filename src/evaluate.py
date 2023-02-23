@@ -1,142 +1,72 @@
-from src.xyz2mol import xyz2mol
 
-from rdkit import Chem
-from rdkit import RDLogger
-RDLogger.DisableLog('rdApp.*')
+import torch
 
-import spyrmsd.rmsd
-import numpy as np
+def get_greedy_mapping(xyz_pred, xyz_truth, atom_nums):
+    N = xyz_pred.shape[0]
+    mapping = []
+    mapped = set()
+    for i in range(N):
+        dists = torch.norm(xyz_pred[i] - xyz_truth, dim=1)
+        # sort dists and get the index of the closest atom
+        idxs_by_dist = torch.argsort(dists)
+        
+        for j in idxs_by_dist:
+            j = j.item()
+            if j not in mapped and atom_nums[i] == atom_nums[j]:
+                mapping.append(j)
+                mapped.add(j)
+                break
 
-from copy import deepcopy
+    return mapping
 
+flips = [
+    torch.tensor([-1, -1, -1]),
+    torch.tensor([-1, -1, 1]),
+    torch.tensor([-1, 1, -1]),
+    torch.tensor([-1, 1, 1]),
+    torch.tensor([1, -1, -1]),
+    torch.tensor([1, -1, 1]),
+    torch.tensor([1, 1, -1]),
+    torch.tensor([1, 1, 1]),
+]
 
-def evaluate(atom_nums, coords_true, coords_pred):
+def align_and_rmsd(G_pred, G_truth):
+    # min_rmsd = 100000
+    min_heavy_rmsd = 100000
+    best_flip = None
+    for flip in flips:
+        xyz_pred = G_pred.ndata['xyz'] * flip
+        xyz_truth = G_truth.ndata['xyz']
+        atom_nums = G_pred.ndata['atom_nums']
+
+        # mapping = get_greedy_mapping(xyz_pred, xyz_truth, atom_nums)
+        # rmsd = torch.norm(xyz_pred - xyz_truth[mapping]).mean().sqrt()
+        # min_rmsd = min(min_rmsd, rmsd)
+
+        # heavy atoms only
+        xyz_pred = xyz_pred[atom_nums != 1]
+        xyz_truth = xyz_truth[atom_nums != 1]
+        atom_nums = atom_nums[atom_nums != 1]
+        mapping = get_greedy_mapping(xyz_pred, xyz_truth, atom_nums)
+        heavy_rmsd = torch.norm(xyz_pred - xyz_truth[mapping]).mean().sqrt()
+        if heavy_rmsd < min_heavy_rmsd:
+            min_heavy_rmsd = heavy_rmsd
+            best_flip = flip
+
+    return min_heavy_rmsd, best_flip
+
+def evaluate(G_pred, G_truth):
+    coords_pred = G_pred.ndata['xyz']
+    coords_true = G_truth.ndata['xyz']
+    atom_nums = G_pred.ndata['atom_nums']
+
     carbon_mask = (atom_nums == 6)
-    C_coords_true = coords_true[carbon_mask]
-    C_coords_pred = coords_pred[carbon_mask]
-    C_atomic_nums = atom_nums[carbon_mask]
 
-    abs_C_rmsd = np.sqrt(np.mean((np.abs(C_coords_true) - np.abs(C_coords_pred))**2))
-    
-    # take min(left, right) enantiomer
-    rmsd1 = spyrmsd.rmsd.rmsd(
-        coords1=C_coords_true,
-        coords2=C_coords_pred,
-        atomicn1=C_atomic_nums,
-        atomicn2=C_atomic_nums,
-        minimize=True
-    )
+    cpred = coords_pred[carbon_mask][G_pred.ndata['cond_mask'][carbon_mask]].abs()
+    ctrue = coords_true[carbon_mask][G_truth.ndata['cond_mask'][carbon_mask]].abs()
 
-    C_coords_pred[:, 0] *= -1  # flip x coordinates for other enantiomer
+    abs_C_rmsd = torch.norm(cpred - ctrue).mean().sqrt()
 
-    rmsd2 = spyrmsd.rmsd.rmsd(
-        coords1=C_coords_true,
-        coords2=C_coords_pred,
-        atomicn1=C_atomic_nums,
-        atomicn2=C_atomic_nums,
-        minimize=True
-    )
+    heavy_rmsd, best_flip = align_and_rmsd(G_pred, G_truth)
 
-    C_rmsd = min(rmsd1, rmsd2)
-    
-    if C_rmsd < 15:
-        try:
-            pred_mols = xyz2mol(
-                atoms=atom_nums.tolist(),
-                coordinates=coords_pred.tolist(),
-                embed_chiral=False,
-            )
-        except ValueError:
-            pred_mols = False
-    else:
-        pred_mols = False
-
-    stable = True if pred_mols else False
-
-    correct = False
-
-    if pred_mols:
-        try:
-            true_mols = xyz2mol(
-                atoms=atom_nums.tolist(),
-                coordinates=coords_true.tolist(),
-                embed_chiral=False,
-            )
-        except ValueError:
-            true_mols = False
-        
-        if true_mols:
-            true_smiles = Chem.CanonSmiles(Chem.MolToSmiles(true_mols[0]))
-            pred_smiles = Chem.CanonSmiles(Chem.MolToSmiles(pred_mols[0]))
-            correct = True if true_smiles == pred_smiles else False
-    
-    heavy_rmsd = None
-    if correct:
-        # get rmsd from mol
-
-        spyrmsd_mol_true = spyrmsd.molecule.Molecule.from_rdkit(true_mols[0])
-        spyrmsd_mol_pred = spyrmsd.molecule.Molecule.from_rdkit(pred_mols[0])
-        flipped = deepcopy(spyrmsd_mol_pred)
-        flipped.coordinates[:, 0] *= -1 # flip x coordinates for other enantiomer
-
-        rmsds = spyrmsd.rmsd.rmsdwrapper(
-                spyrmsd_mol_true,
-                [spyrmsd_mol_pred, flipped],
-                symmetry=True,
-                minimize=True,
-            )
-        heavy_rmsd = min(rmsds)
-
-    atom_nums_no_H = atom_nums[atom_nums != 1]
-    coords_true_no_H = coords_true[atom_nums != 1]
-    coords_pred_no_H = coords_pred[atom_nums != 1]
-    
-    if C_rmsd < 15:
-        try:
-            pred_mols = xyz2mol(
-                atoms=atom_nums_no_H.tolist(),
-                coordinates=coords_pred_no_H.tolist(),
-                embed_chiral=False,
-            )
-        except ValueError:
-            pred_mols = False
-    else:
-        pred_mols = False
-
-    stable_no_H = True if pred_mols else False
-
-    correct_no_H = False
-
-    if pred_mols:
-        try:
-            true_mols = xyz2mol(
-                atoms=atom_nums_no_H.tolist(),
-                coordinates=coords_true_no_H.tolist(),
-                embed_chiral=False,
-            )
-        except ValueError:
-            true_mols = False
-        
-        if true_mols:
-            true_smiles = Chem.CanonSmiles(Chem.MolToSmiles(true_mols[0]))
-            pred_smiles = Chem.CanonSmiles(Chem.MolToSmiles(pred_mols[0]))
-            correct_no_H = True if true_smiles == pred_smiles else False
-    
-    heavy_rmsd_no_H = None
-    if correct_no_H:
-        # get rmsd from mol
-
-        spyrmsd_mol_true = spyrmsd.molecule.Molecule.from_rdkit(true_mols[0])
-        spyrmsd_mol_pred = spyrmsd.molecule.Molecule.from_rdkit(pred_mols[0])
-        flipped = deepcopy(spyrmsd_mol_pred)
-        flipped.coordinates[:, 0] *= -1 # flip x coordinates for other enantiomer
-
-        rmsds = spyrmsd.rmsd.rmsdwrapper(
-                spyrmsd_mol_true,
-                [spyrmsd_mol_pred, flipped],
-                symmetry=True,
-                minimize=True,
-            )
-        heavy_rmsd_no_H = min(rmsds)
-
-    return abs_C_rmsd, C_rmsd, (stable_no_H or stable), (correct_no_H or correct), (heavy_rmsd_no_H or heavy_rmsd)
+    return abs_C_rmsd, heavy_rmsd, best_flip
