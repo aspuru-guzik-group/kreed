@@ -48,7 +48,7 @@ _EDGE_CACHE = _build_edge_cache(max_nodes=200)
 #                                         Data Handling                                            #
 # ================================================================================================ #
 
-
+isotopically_abundant = torch.tensor([5, 6, 7, 8, 14, 16, 17, 35, 80], dtype=torch.long)
 class GEOMDataset(Dataset):
 
     def __init__(self, conformations, tol, zero_com, carbon_only, remove_Hs):
@@ -85,7 +85,7 @@ class GEOMDataset(Dataset):
 
         # Retrieve unsigned coordinates for carbons that are not too close to coordinate axis
         abs_xyz = torch.abs(G.ndata["xyz"])
-        abs_mask = (atom_nums == 6) & torch.any(abs_xyz >= self.tol, dim=-1)
+        abs_mask = torch.isin(atom_nums, isotopically_abundant) & torch.any(abs_xyz >= self.tol, dim=-1)
 
         # Zero out non-carbons (later, zero out imaginary unsigned coordinates)
         abs_xyz[~abs_mask, :] = 0.0
