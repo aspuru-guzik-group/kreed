@@ -26,7 +26,7 @@ class LitEquivariantDDPMConfig(EquivariantDDPMConfig):
     # Training Fields
     # ===============
 
-    max_epochs: int = 500
+    max_epochs: int = 1000
     lr: float = 1e-4
 
     ema_decay: float = 0.9999
@@ -144,11 +144,11 @@ class LitEquivariantDDPM(pl.LightningModule):
                     trajectory = []
                     for step in tqdm(reversed(range(-1, T + 1, self.config.render_every_n_steps)), desc=f"Rendering trajectory {i}", leave=False, total=int((T+2)/self.config.render_every_n_steps)):
                         graph = dgl.unbatch(frames[step])[i]
-                        trajectory.append(graph.ndata["xyz"].cpu().numpy())
+                        trajectory.append((graph.ndata["xyz"].cpu() * best_flip).numpy())
                     
                     # last frame
                     graph = dgl.unbatch(frames[-1])[i]
-                    trajectory.append(graph.ndata["xyz"].cpu().numpy())
+                    trajectory.append((graph.ndata["xyz"].cpu() * best_flip).numpy())
 
                     wandb.log({
                         f"{folder}/anim_pred_{i}": wandb.Html(html_render_trajectory(geom_id, atom_nums, trajectory)),

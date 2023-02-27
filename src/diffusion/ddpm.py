@@ -16,7 +16,7 @@ from tqdm import tqdm
 class EquivariantDDPMConfig(pydantic.BaseModel):
     """Configuration object for the DDPM."""
 
-    equivariance: Literal["e3", "reflect"] = "e3"
+    equivariance: Literal["e3", "reflect"] = "reflect"
 
     # ===========
     # EGNN Fields
@@ -63,21 +63,12 @@ class EnEquivariantDDPM(nn.Module):
         else:
             self.classifier = None
 
-        if self.dynamics.is_e3:
-            self.maybe_zeroed_com = utils.zeroed_com
-            self.maybe_assert_zeroed_com = utils.assert_zeroed_com
-        else:
-            self.maybe_zeroed_com = lambda G, xyz: xyz
-            self.maybe_assert_zeroed_com = lambda G, xyz=None: None
-
         self.T = cfg.timesteps
         self.gamma = NoiseSchedule(cfg.noise_shape, timesteps=self.T, precision=cfg.noise_precision)
 
     def dimensionality(self, G):
-        if self.dynamics.is_e3:
-            return (G.batch_num_nodes() - 1) * 3
-        else:
-            return G.batch_num_nodes() * 3
+        # always subspace where weighted center of mass is 0
+        return (G.batch_num_nodes() - 1) * 3
 
     def broadcast_scalar(self, val, G=None):
         if G is None:
@@ -112,7 +103,7 @@ class EnEquivariantDDPM(nn.Module):
 
     def sample_randn_G_like(self, G_init, mean=None, std=None, return_noise=False):
         eps = torch.randn_like(G_init.ndata["xyz"])
-        eps = self.maybe_zeroed_com(G_init, eps)
+        eps = utils.zeroed_weighted_com(G_init, eps)
 
         G = G_init.local_var()
         if (mean is None) and (std is None):
@@ -126,7 +117,7 @@ class EnEquivariantDDPM(nn.Module):
             print('nan detected in sampling')
             G.ndata['xyz'] = torch.where(torch.isnan(G.ndata['xyz']), 0.0, G.ndata['xyz'])
                 
-        self.maybe_assert_zeroed_com(G)
+        utils.assert_zeroed_weighted_com(G)
 
         return G if not return_noise else (G, eps)
 
@@ -154,7 +145,7 @@ class EnEquivariantDDPM(nn.Module):
             g = g.clip(min=-100.0, max=100.0)
 
             mu = mu + (guidance_scale * sigma.square() * g)
-            mu = self.maybe_zeroed_com(G_t, mu)
+            mu = utils.zeroed_weighted_com(G_t, mu)
 
         return self.sample_randn_G_like(G_t, mean=mu, std=sigma)
 
@@ -174,7 +165,7 @@ class EnEquivariantDDPM(nn.Module):
     @torch.no_grad()
     def sample_p_G(self, G_init, keep_frames=None, guidance_scale=0.0):
         G_T = self.sample_randn_G_like(G_init)
-        self.maybe_assert_zeroed_com(G_T)
+        utils.assert_zeroed_weighted_com(G_T)
 
         frames = {self.T: G_T}
 
@@ -185,7 +176,7 @@ class EnEquivariantDDPM(nn.Module):
             if (keep_frames is not None) and (step in keep_frames):
                 frames[step] = G_t
         G = self.sample_p_G_given_G0(G_t)
-        self.maybe_assert_zeroed_com(G)  # sanity check
+        utils.assert_zeroed_weighted_com(G)  # sanity check
 
         frames[-1] = G
 

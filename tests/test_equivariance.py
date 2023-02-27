@@ -14,7 +14,7 @@ rot_mat = torch.tensor(rot_mat).float()
 
 def test_reflection_model():
 
-    data = QM9Datamodule(100, 2, zero_com=False)
+    data = QM9Datamodule(100, 2)
     G = data.datasets['train'][0]
 
     dynamics = EquivariantDynamics('reflect', 16, 256, 4)
@@ -50,7 +50,7 @@ def test_reflection_model():
 
 def test_rotation_model():
 
-    data = QM9Datamodule(100, 2, zero_com=True)
+    data = QM9Datamodule(100, 2)
     G = data.datasets['train'][0]
 
     dynamics = EquivariantDynamics('e3', 16, 256, 4)

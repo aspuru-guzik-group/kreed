@@ -51,12 +51,11 @@ _EDGE_CACHE = _build_edge_cache(max_nodes=200)
 isotopically_abundant = torch.tensor([5, 6, 7, 8, 14, 16, 17, 35, 80], dtype=torch.long)
 class GEOMDataset(Dataset):
 
-    def __init__(self, conformations, tol, zero_com, carbon_only, remove_Hs):
+    def __init__(self, conformations, tol, carbon_only, remove_Hs):
         super().__init__()
 
         self.conformations = conformations
         self.tol = tol
-        self.zero_com = zero_com
         self.carbon_only = carbon_only
         self.remove_Hs = remove_Hs
 
@@ -80,8 +79,10 @@ class GEOMDataset(Dataset):
         G.ndata["xyz"] = xyz
 
         # Canonicalize conformation
-        G = rotated_to_principal_axes(G)
+        G, moments = rotated_to_principal_axes(G, return_moments=True)
         del xyz  # for safety
+
+        G.ndata['moments'] = torch.tile(moments, (n, 1))  # (N 3)
 
         # Retrieve unsigned coordinates for carbons that are not too close to coordinate axis
         abs_xyz = torch.abs(G.ndata["xyz"])
@@ -102,10 +103,6 @@ class GEOMDataset(Dataset):
         if not torch.all(filter_mask):
             G = dgl.node_subgraph(G, filter_mask, store_ids=False)
         del n  # for safety
-
-        if self.zero_com:
-            # Center molecule coordinates to 0 CoM subspace
-            G.ndata["xyz"] = utils.zeroed_com(G, G.ndata["xyz"])
 
         # Record GEOM ID
         G.ndata["id"] = torch.full((G.number_of_nodes(),), geom_id)  # hack to store graph-level data
@@ -179,7 +176,7 @@ class GEOMDatamodule(pl.LightningDataModule):
                 num_conformers = mol.shape[0] / num_atoms
                 all_conformations.extend(np.split(mol_confs, num_conformers))
 
-            datasets[split] = GEOMDataset(all_conformations, tol=tol, zero_com=zero_com, carbon_only=carbon_only, remove_Hs=remove_Hs)
+            datasets[split] = GEOMDataset(all_conformations, tol=tol, carbon_only=carbon_only, remove_Hs=remove_Hs)
         self.datasets = datasets
 
     @property

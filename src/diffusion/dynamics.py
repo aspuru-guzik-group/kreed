@@ -70,7 +70,4 @@ class EquivariantDynamics(nn.Module):
             h, xyz = block(G, h=h, x=xyz, a=a)
         vel = xyz - G.ndata["xyz"]
 
-        if self.is_e3:
-            return utils.zeroed_com(G, vel)
-        else:
-            return vel
+        return utils.zeroed_weighted_com(G, vel)

@@ -8,6 +8,25 @@ def _mean(G, xyz):
         mean = dgl.mean_nodes(G, "tmp")
     return mean
 
+from src.kraitchman import ATOM_MASSES
+
+def _weighted_mean(G, xyz):
+    with G.local_scope():
+        m = ATOM_MASSES[G.ndata["atom_nums"].cpu()].to(G.device)
+        G.ndata["m"] = m.unsqueeze(-1)
+        G.ndata["tmp"] = xyz
+        mean = dgl.sum_nodes(G, "tmp", weight="m") / dgl.sum_nodes(G, "m")
+    return mean
+
+def zeroed_weighted_com(G, xyz):
+    return xyz - dgl.broadcast_nodes(G, _weighted_mean(G, xyz))
+
+def assert_zeroed_weighted_com(G, xyz=None):
+    if xyz is None:
+        xyz = G.ndata["xyz"]
+    com = _weighted_mean(G, xyz)
+    error = com.abs().max().item() / xyz.abs().max().item()
+    assert error < 1e-4, error
 
 def zeroed_com(G, xyz):
     return xyz - dgl.broadcast_nodes(G, _mean(G, xyz))
