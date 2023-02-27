@@ -25,7 +25,7 @@ def assert_zeroed_weighted_com(G, xyz=None):
     if xyz is None:
         xyz = G.ndata["xyz"]
     com = _weighted_mean(G, xyz)
-    error = com.abs().max().item() / xyz.abs().max().item()
+    error = com.abs().max().item() / (xyz.abs().max().item() + 1e-8)
     assert error < 1e-4, error
 
 def zeroed_com(G, xyz):

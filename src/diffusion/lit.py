@@ -36,6 +36,7 @@ class LitEquivariantDDPMConfig(EquivariantDDPMConfig):
     # Sampling Fields
     # ================
 
+    evaluate_every_n_epochs: int = 1
     n_visualize_samples: int = 3
     render_every_n_steps: int = 5
     n_sample_metric_batches: int = 1
@@ -101,10 +102,11 @@ class LitEquivariantDDPM(pl.LightningModule):
             self.log(f"{split}/nll", loss, batch_size=G.batch_size)
 
         cfg = self.config
-        if batch_idx < cfg.n_sample_metric_batches:
-            n = cfg.n_visualize_samples if (batch_idx == 0) else 0
-            for scale in cfg.guidance_scales:
-                self._evaluate_guided_samples(G=G, split=split, n_visualize=n, scale=scale)
+        if self.current_epoch % cfg.evaluate_every_n_epochs == 0:
+            if batch_idx < cfg.n_sample_metric_batches:
+                n = cfg.n_visualize_samples if (batch_idx == 0) else 0
+                for scale in cfg.guidance_scales:
+                    self._evaluate_guided_samples(G=G, split=split, n_visualize=n, scale=scale)
 
         return loss
 
