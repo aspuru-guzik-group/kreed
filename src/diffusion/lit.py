@@ -112,7 +112,7 @@ class LitEquivariantDDPM(pl.LightningModule):
         folder = f"{split}/samples_scale={scale}"
 
         T = self.config.timesteps
-        keep_frames = set(range(-1, T + 1))
+        keep_frames = set(range(-1, T + 1, self.config.render_every_n_steps))
         G_sample, frames = self.edm.sample_p_G(G_init=G, guidance_scale=scale, keep_frames=keep_frames)
 
         abs_C_rmsds = 0.0
@@ -142,7 +142,7 @@ class LitEquivariantDDPM(pl.LightningModule):
                     })
 
                     trajectory = []
-                    for step in tqdm(reversed(range(-1, T + 1, self.config.render_every_n_steps)), desc=f"Rendering trajectory {i}", leave=False, total=int((T+2)/self.config.render_every_n_steps)):
+                    for step in tqdm(reversed(range(-1, T + 1, self.config.render_every_n_steps)), desc=f"Rendering trajectory {i}", leave=False, total=len(keep_frames)):
                         graph = dgl.unbatch(frames[step])[i]
                         trajectory.append((graph.ndata["xyz"].cpu() * best_flip).numpy())
                     
