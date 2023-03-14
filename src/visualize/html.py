@@ -15,7 +15,7 @@ def format_as_xyzfile(atom_nums, coords):
     xyzfile = f"{atom_nums.shape[0]}\n\n"
     for a, xyz in zip(atom_nums, coords):
         x, y, z = xyz
-        xyzfile += f"{PTABLE.GetElementSymbol(int(a))} {x} {y} {z}\n"
+        xyzfile += f"{PTABLE.GetElementSymbol(int(a))} {format(x.item(), 'f')} {format(y.item(), 'f')} {format(z.item(), 'f')}\n"
     return xyzfile
 
 
