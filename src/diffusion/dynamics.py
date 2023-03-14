@@ -17,7 +17,7 @@ class EquivariantDynamics(nn.Module):
         super().__init__()
 
         self.d_atom_vocab = d_atom_vocab
-        self.proj_h = nn.Linear(8 + d_atom_vocab, d_hidden)
+        self.proj_h = nn.Linear(11 + d_atom_vocab, d_hidden)
         self.is_e3 = (equivariance == "e3")
 
         self.eq_blocks = nn.ModuleList([
@@ -44,15 +44,20 @@ class EquivariantDynamics(nn.Module):
         cond_labels = G.ndata["cond_labels"].to(xyz)  # (N 3)
         cond_mask = G.ndata["cond_mask"].to(xyz)  # (N 3)
 
+        # moments
+        moments = G.ndata["moments"].to(xyz)  # (N 3)
+        moments_per_node = (moments / dgl.broadcast_nodes(G, G.batch_num_nodes()).unsqueeze(-1))
+
         features = [
             atom_ids,
             atom_masses.unsqueeze(-1) / 12.0,  # FIXME: the normalization is arbitrary here
             temb.unsqueeze(-1),
             cond_mask,
             cond_labels,
+            moments_per_node / 12.0,
         ]
 
-        return torch.cat(features, dim=-1)  # (N d_vocab+6)
+        return torch.cat(features, dim=-1)  # (N d_vocab+11)
 
     def forward(self, G, t):
         xyz = G.ndata["xyz"]
