@@ -151,3 +151,7 @@ src/old_kraitchman.py
 src/diffusion/debug_configs.py
 src/diffusion/train_overfit.py
 **/wandb
+
+qm9_samples
+qm9_samples_other
+geom_samples_before_mar_1
