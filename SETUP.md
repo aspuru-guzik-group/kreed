@@ -9,4 +9,10 @@ conda env
 2. Place in data/geom/raw
 3. Run `python data/geom/preprocess.py`
 
+Alternatively, create a symlink:
+```
+ln -s /path/to/qm9_crude.msgpack data/qm9/raw/qm9_crude.msgpack
+ln -s /path/to/drugs_crude.msgpack data/geom/raw/drugs_crude.msgpack
+```
+
 The preprocessing caches the entire dataset in a .npy file, which is much faster to load than .msgpack files.
