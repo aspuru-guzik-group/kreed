@@ -78,7 +78,7 @@ class LitEquivariantDDPM(pl.LightningModule):
         max_norm = 1.5 * statistics.mean(self.grad_norm_queue) + 2 * statistics.stdev(self.grad_norm_queue)
         self.log("max_grad_norm", max_norm)
 
-        grad_norm = torch.nn.utils.clip_grad_norm_(self.edm.parameters(), max_norm=max_norm, norm_type=2.0, error_if_nonfinite=False).item()
+        grad_norm = torch.nn.utils.clip_grad_norm_(self.edm.parameters(), max_norm=max_norm, norm_type=2.0, error_if_nonfinite=True).item()
         grad_norm = min(grad_norm, max_norm)
         self.grad_norm_queue.append(grad_norm)
 

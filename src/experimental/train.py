@@ -9,7 +9,8 @@ from pytorch_lightning.loggers import WandbLogger
 
 from src.datamodules import QM9Datamodule, GEOMDatamodule
 from src.diffusion import LitEquivariantDDPM, LitEquivariantDDPMConfig
-
+from datetime import timedelta
+import os
 
 class TrainEquivariantDDPMConfig(LitEquivariantDDPMConfig):
     """Configuration object for training the DDPM."""
@@ -40,7 +41,12 @@ class TrainEquivariantDDPMConfig(LitEquivariantDDPMConfig):
     # ==============
 
     wandb: bool = False
-    checkpoint: bool = False
+
+    checkpoint: bool = True
+    checkpoint_dir: str = "checkpoints"
+    checkpoint_train_time_interval: int = 10 # minutes
+
+    run_id: str = "default"
 
     log_every_n_steps: int = 10
     progress_bar: bool = False
@@ -90,8 +96,14 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
 
     if cfg.wandb:
         project = "train_edm" + ("_debug" if cfg.debug else "")
-        logger = WandbLogger(project=project, log_model=True, save_dir=str(log_dir))
-        logger.experiment.config.update(dict(cfg))
+        logger = WandbLogger(project=project,
+                             log_model=True,
+                             save_dir='.',
+                             version=cfg.run_id,
+                             config=dict(cfg),
+                             resume="allow",
+
+        )
     else:
         logger = False
 
@@ -100,10 +112,12 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
     if cfg.checkpoint:
         callbacks.append(
             ModelCheckpoint(
-                dirpath=wandb.run.dir,
+                dirpath=cfg.checkpoint_dir + "/" + cfg.run_id,
                 monitor="val/nll",
                 save_top_k=3,
                 save_last=True,
+                verbose=True,
+                train_time_interval=timedelta(minutes=cfg.checkpoint_train_time_interval),
             )
         )
 
@@ -131,9 +145,11 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         **debug_kwargs,
     )
 
-    trainer.fit(model=ddpm, datamodule=data)
-    trainer.validate(model=ddpm, datamodule=data)
-    trainer.test(model=ddpm, datamodule=data)
+    checkpoint_path = cfg.checkpoint_dir + "/" + cfg.run_id + "/last.ckpt"
+    if os.path.exists(checkpoint_path):
+        trainer.fit(model=ddpm, datamodule=data, ckpt_path=checkpoint_path)
+    else:
+        trainer.fit(model=ddpm, datamodule=data)
 
     if cfg.wandb:
         wandb.finish()

@@ -155,3 +155,6 @@ src/diffusion/train_overfit.py
 qm9_samples
 qm9_samples_other
 geom_samples_before_mar_1
+.vscode/launch.json
+
+checkpoints/
