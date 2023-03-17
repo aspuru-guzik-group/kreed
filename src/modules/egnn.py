@@ -82,10 +82,10 @@ class EquivariantBlock(nn.Module):
 
             # Get coordinate diff & radial features
             G.apply_edges(fn.u_sub_v("x", "x", "x_diff"))
-            G.edata["radial"] = LA.norm(G.edata["x_diff"], ord=2, dim=-1, keepdim=True).square()
+            G.edata["radial"] = LA.norm(G.edata["x_diff"], ord=2, dim=-1, keepdim=True)
 
             # Normalize coordinate difference
-            G.edata["x_diff"] = G.edata["x_diff"] / (G.edata["radial"].sqrt() + 1.0)
+            G.edata["x_diff"] = G.edata["x_diff"] / (G.edata["radial"] + 1.0)
             G.apply_edges(self.message)
 
             G.update_all(fn.copy_e("msg_x", "m"), fn.sum("m", "x_neigh"))
