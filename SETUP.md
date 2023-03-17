@@ -11,6 +11,8 @@ conda env
 
 Alternatively, create a symlink:
 ```
+mkdir data/qm9/raw
+mkdir data/geom/raw
 ln -s /path/to/qm9_crude.msgpack data/qm9/raw/qm9_crude.msgpack
 ln -s /path/to/drugs_crude.msgpack data/geom/raw/drugs_crude.msgpack
 ```
