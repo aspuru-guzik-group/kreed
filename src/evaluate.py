@@ -78,6 +78,9 @@ def get_smiles(atom_nums, coords):
     return Chem.MolToSmiles(mol)
 
 def connectivity_correct(atom_nums, coords_pred, coords_truth):
-    smiles_pred = get_smiles(atom_nums, coords_pred)
-    smiles_truth = get_smiles(atom_nums, coords_truth)
-    return smiles_pred == smiles_truth
+    try:
+        smiles_pred = get_smiles(atom_nums, coords_pred)
+        smiles_truth = get_smiles(atom_nums, coords_truth)
+        return smiles_pred == smiles_truth
+    except:
+        return False
