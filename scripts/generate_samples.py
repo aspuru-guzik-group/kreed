@@ -2,7 +2,7 @@ import sys
 sys.path.append('.')
 from src.diffusion.lit import LitEquivariantDDPM, LitEquivariantDDPMConfig
 from src.experimental.train import TrainEquivariantDDPMConfig
-checkpoint_path = 'logs/wandb/latest-run/files/last.ckpt'
+checkpoint_path = 'checkpoints/v_geom_reflect/last.ckpt'
 model = LitEquivariantDDPM.load_from_checkpoint(checkpoint_path).to('cuda:0')
 
 from src.evaluate import evaluate
@@ -15,15 +15,16 @@ import pickle
 from torch.utils.data import Dataset
 
 from pathlib import Path
-path = Path('qm9_samples')
+path = Path('v_geom_samples')
 
-dataset = 'qm9'
+dataset = 'geom'
 
 print('loading datamodule... ', end='')
 if dataset == 'geom':
     data = GEOMDatamodule(100, 1)
     B = 64
-    samples_per_example = 10
+    samples_per_example = 4
+    render_every_n_steps = 5
 elif dataset == 'qm9':
     data = QM9Datamodule(100, 1)
     samples_per_example = 4
@@ -32,14 +33,16 @@ elif dataset == 'qm9':
 print('done!')
 
 
-dataset = data.datasets['test']
+dataset = data.datasets['val']
 
-n_examples = 5000
+n_examples = 40
 
 # pick random numbers between 0 and len(dataset)
 import torch
 torch.manual_seed(100)
-random_indices = torch.randint(0, len(dataset), (n_examples,))
+import numpy as np
+np.random.seed(102)
+random_indices = np.random.choice(len(dataset), n_examples, replace=False)
 
 newdataset = []
 for idx in random_indices:
