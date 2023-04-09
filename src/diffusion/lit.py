@@ -40,6 +40,7 @@ class LitEquivariantDDPMConfig(EquivariantDDPMConfig):
     n_visualize_samples: int = 3
     render_every_n_steps: int = 5
     n_sample_metric_batches: int = 1
+    n_eval_samples: int = 100
 
     guidance_scales: List[float] = (0,)
 
@@ -71,7 +72,7 @@ class LitEquivariantDDPM(pl.LightningModule):
             self.ema_moved_to_device = True
         self.ema.update()
 
-    def configure_gradient_clipping(self, optimizer, optimizer_idx, gradient_clip_val=None, gradient_clip_algorithm=None):
+    def configure_gradient_clipping(self, optimizer, gradient_clip_val=None, gradient_clip_algorithm=None):
         if not self.config.clip_grad_norm:
             return
 
@@ -105,8 +106,9 @@ class LitEquivariantDDPM(pl.LightningModule):
         if self.current_epoch % cfg.evaluate_every_n_epochs == 0:
             if batch_idx < cfg.n_sample_metric_batches:
                 n = cfg.n_visualize_samples if (batch_idx == 0) else 0
+                small_G = dgl.batch(dgl.unbatch(G)[:cfg.n_eval_samples])
                 for scale in cfg.guidance_scales:
-                    self._evaluate_guided_samples(G=G, split=split, n_visualize=n, scale=scale)
+                    self._evaluate_guided_samples(G=small_G, split=split, n_visualize=n, scale=scale)
 
         return loss
 

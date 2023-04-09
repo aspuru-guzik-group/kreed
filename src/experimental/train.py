@@ -12,6 +12,8 @@ from src.diffusion import LitEquivariantDDPM, LitEquivariantDDPMConfig
 from datetime import timedelta
 import os
 
+import torch
+torch.set_float32_matmul_precision('medium')
 class TrainEquivariantDDPMConfig(LitEquivariantDDPMConfig):
     """Configuration object for training the DDPM."""
 
@@ -20,7 +22,7 @@ class TrainEquivariantDDPMConfig(LitEquivariantDDPMConfig):
 
     accelerator: str = "gpu"
     devices: int = 1
-    strategy: Optional[str] = None
+    strategy: Optional[str] = 'auto'
 
     # =================
     # Datamodule Fields

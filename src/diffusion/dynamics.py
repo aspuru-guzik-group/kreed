@@ -60,7 +60,7 @@ class EquivariantDynamics(nn.Module):
         return torch.cat(features, dim=-1)  # (N d_vocab+11)
 
     def forward(self, G, t):
-        xyz = G.ndata["xyz"]
+        xyz = G.ndata["xyz"] # (N 3)
 
         with G.local_scope():
             G.apply_edges(fn.u_sub_v("xyz", "xyz", "xyz_diff"))
