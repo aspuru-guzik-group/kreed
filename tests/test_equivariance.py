@@ -1,5 +1,6 @@
 import torch
-
+import sys
+sys.path.append('.')
 from src.datamodules.qm9 import QM9Datamodule
 from src.diffusion.dynamics import EquivariantDynamics
 from copy import deepcopy
@@ -83,3 +84,5 @@ def test_rotation_model():
 
     # test that f(R(x)) == R(f(x))
     assert ((model_then_rotate_x - rotate_then_model_x).abs() < 1e-5).all()
+
+test_reflection_model()

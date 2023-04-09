@@ -9,6 +9,7 @@ import torch.nn as nn
 # Adapted to implement:
 # https://github.com/ehoogeboom/e3_diffusion_for_molecules/blob/main/egnn/egnn_new.py
 
+from .layernorm import SE3Norm
 
 class EquivariantBlock(nn.Module):
 
@@ -57,6 +58,9 @@ class EquivariantBlock(nn.Module):
             nn.Linear(d_hidden, 1, bias=False),
         )
 
+        self.e3norm = SE3Norm()
+        self.norm = nn.LayerNorm(d_hidden)
+
         torch.nn.init.xavier_uniform_(self.coord_mlp[-1].weight, gain=0.001)
 
     def message(self, edges):
@@ -84,18 +88,16 @@ class EquivariantBlock(nn.Module):
             G.apply_edges(fn.u_sub_v("x", "x", "x_diff"))
             G.edata["radial"] = LA.norm(G.edata["x_diff"], ord=2, dim=-1, keepdim=True)
 
-            # Normalize coordinate difference
-            G.edata["x_diff"] = G.edata["x_diff"] / (G.edata["radial"] + 1.0)
             G.apply_edges(self.message)
 
             G.update_all(fn.copy_e("msg_x", "m"), fn.sum("m", "x_neigh"))
-            x_neigh = G.ndata["x_neigh"]
-            x = x + x_neigh
+            x = x + self.e3norm(G, 'x_neigh')
 
             if self.update_hidden:
                 G.update_all(fn.copy_e("msg_h", "m"), fn.sum("m", "h_neigh"))
                 h_neigh = G.ndata["h_neigh"]
-                h = h + self.node_mlp(torch.cat([h, h_neigh], dim=-1))
+                out_h = self.node_mlp(torch.cat([h, h_neigh], dim=-1))
+                h = self.norm(h + out_h)
             else:
                 h = None
 
