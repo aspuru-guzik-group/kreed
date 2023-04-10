@@ -24,6 +24,7 @@ def preprocess_dataset(dataset, num_conformers, min_atoms, debug):
     dataset_smiles = []
     dataset_coords = []
     start_idx = 0
+    molecule_id = 0
 
     if dataset == "qm9":
         fpath = root / "raw" / "qm9_crude.msgpack"
@@ -42,7 +43,7 @@ def preprocess_dataset(dataset, num_conformers, min_atoms, debug):
             for c in conformers:
                 info = [
                     start_idx,  # start index
-                    len(smiles),  # SMILES id
+                    molecule_id,  # molecule id
                     c["geom_id"],  # GEOM id
                 ]
 
@@ -57,6 +58,7 @@ def preprocess_dataset(dataset, num_conformers, min_atoms, debug):
                     dataset_metadata.append(info)
                     dataset_coords.append(txyz)
             dataset_smiles.append(smiles)
+            molecule_id += 1
 
     # Cache to files
     save_dir = root / "processed"

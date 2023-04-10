@@ -120,10 +120,10 @@ class ConformerDatamodule(pl.LightningDataModule):
         # Group conformations by molecule
         D = dict()
         for info, txyz in zip(metadata, coords):
-            _, smiles_id, geom_id = list(info)
-            if smiles_id not in D:
-                D[smiles_id] = list()
-            D[smiles_id].append((txyz, geom_id))
+            _, molecule_id, geom_id = list(info)
+            if molecule_id not in D:
+                D[molecule_id] = list()
+            D[molecule_id].append((txyz, geom_id))
         D = list(D.values())
 
         # Create train/val/test split

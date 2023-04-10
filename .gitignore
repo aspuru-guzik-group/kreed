@@ -163,4 +163,6 @@ v_geom_samples/
 
 data/old_geom
 data/old_qm9
+data/geom
+data/qm9
 
