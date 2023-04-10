@@ -110,7 +110,7 @@ class EquivariantDDPM(nn.Module):
 
         return G if not return_noise else (G, eps)
 
-    def sample_p_Gs_given_Gt(self, G_t, s, t, guidance_scale=0.0):
+    def sample_p_Gs_given_Gt(self, G_t, s, t):
         gamma_s = self.gamma(s)
         gamma_t = self.gamma(t)
 
@@ -124,17 +124,6 @@ class EquivariantDDPM(nn.Module):
         eps_t = self.dynamics(G=G_t, t=(t.float() / self.T))
         mu = (G_t.ndata["xyz"] / alpha_t_given_s) - ((sigma2_t_given_s / alpha_t_given_s / sigma_t) * eps_t)
         sigma = sigma_t_given_s * sigma_s / sigma_t
-
-        # Classifier guidance (if applicable)
-        if (self.classifier is not None) and (guidance_scale > 0.0):
-            G_mean = G_t.local_var()
-            G_mean.ndata["xyz"] = mu
-
-            g = self.classifier.grad_log_p_y_given_Gt(G_t=G_mean)
-            g = g.clip(min=-100.0, max=100.0)
-
-            mu = mu + (guidance_scale * sigma.square() * g)
-            mu = utils.zeroed_weighted_com(G_t, mu)
 
         return self.sample_randn_G_like(G_t, mean=mu, std=sigma)
 
@@ -152,7 +141,7 @@ class EquivariantDDPM(nn.Module):
         return self.sample_randn_G_like(G_0, mean=mu, std=sigma)
 
     @torch.no_grad()
-    def sample_p_G(self, G_init, keep_frames=None, guidance_scale=0.0):
+    def sample_p_G(self, G_init, keep_frames=None):
         G_T = self.sample_randn_G_like(G_init)
         utils.assert_zeroed_weighted_com(G_T)
 
@@ -161,7 +150,7 @@ class EquivariantDDPM(nn.Module):
         G_t = G_T
         for step in tqdm(reversed(range(0, self.T)), desc='Sampling', leave=False, total=self.T):
             s = torch.full([G_T.batch_size], fill_value=step, device=G_T.device)
-            G_t = self.sample_p_Gs_given_Gt(G_t=G_t, s=s, t=(s + 1), guidance_scale=guidance_scale)
+            G_t = self.sample_p_Gs_given_Gt(G_t=G_t, s=s, t=(s + 1))
             if (keep_frames is not None) and (step in keep_frames):
                 frames[step] = G_t
         G = self.sample_p_G_given_G0(G_t)
