@@ -8,8 +8,6 @@ def _mean(G, xyz):
         mean = dgl.mean_nodes(G, "tmp")
     return mean
 
-from src.kraitchman import ATOM_MASSES
-
 def _weighted_mean(G, xyz):
     with G.local_scope():
         G.ndata["tmp"] = xyz

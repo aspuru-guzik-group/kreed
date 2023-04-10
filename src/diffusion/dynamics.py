@@ -6,7 +6,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from src import utils
-from src.kraitchman import ATOM_MASSES
 from src.modules import EquivariantBlock
 
 

@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 from src import utils
 from src.diffusion.dynamics import EquivariantDynamics
-from src.modules import NoiseSchedule, KraitchmanClassifier
+from src.modules import NoiseSchedule
 
 from tqdm import tqdm
 
@@ -27,20 +27,14 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
     n_egnn_layers: int = 6
 
     # ===============
-    # Schedule Fields
+    # Sampling Fields
     # ===============
 
     timesteps: int = 1000
     noise_shape: str = "polynomial_2"
     noise_precision: float = 1e-5
 
-    # =================
-    # Classifier Fields
-    # =================
-
-    guidance: bool = True
-    guidance_stdev: float = 1.0
-    guidance_stable_pi: bool = True
+    guidance_strength: float = 1.0
 
 
 class EquivariantDDPM(nn.Module):
@@ -57,11 +51,6 @@ class EquivariantDDPM(nn.Module):
             d_hidden=cfg.d_egnn_hidden,
             n_layers=cfg.n_egnn_layers,
         )
-
-        if cfg.guidance:
-            self.classifier = KraitchmanClassifier(scale=cfg.guidance_stdev, stable=cfg.guidance_stable_pi)
-        else:
-            self.classifier = None
 
         self.T = cfg.timesteps
         self.gamma = NoiseSchedule(cfg.noise_shape, timesteps=self.T, precision=cfg.noise_precision)
