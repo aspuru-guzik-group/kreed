@@ -23,11 +23,12 @@ _EDGE_CACHE = _build_edge_cache(max_nodes=200)
 
 class ConformerDataset(Dataset):
 
-    def __init__(self, conformations, tol):
+    def __init__(self, conformations, tol, p_drop_labels):
         super().__init__()
 
         self.conformations = conformations
         self.tol = tol
+        self.p_drop_labels = p_drop_labels
 
     def __len__(self):
         return len(self.conformations)
@@ -56,6 +57,12 @@ class ConformerDataset(Dataset):
         # Retrieve unsigned coordinates for isotopically abundant atoms that
         # are not too close to coordinate axis
         cond_mask = torch.isin(atom_nums, chem.ISOTOPICALLY_ABUNDANT_ATOMS) & (xyz.abs() >= self.tol)
+        if self.p_drop_labels > 0.0:
+            # Drop labels with probability p_drop_labels
+            # sample a mask of shape (N 3) with values in [0, 1]
+            mask = torch.rand_like(xyz) > self.p_drop_labels
+            cond_mask = cond_mask & mask
+        
         cond_labels = torch.where(cond_mask, xyz.abs(), 0.0)
         G.ndata["cond_mask"] = cond_mask  # (N 3)
         G.ndata["cond_labels"] = cond_labels  # (N 3)
@@ -89,6 +96,7 @@ class ConformerDatamodule(pl.LightningDataModule):
         num_workers,
         distributed,
         tol,
+        p_drop_labels,
     ):
         super().__init__()
 
@@ -98,6 +106,7 @@ class ConformerDatamodule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.distributed = distributed
         self.tol = tol
+        self.p_drop_labels = p_drop_labels
 
         # Load data
         data_dir = pathlib.Path(__file__).parents[1] / "data" / dataset / "processed"
@@ -129,7 +138,7 @@ class ConformerDatamodule(pl.LightningDataModule):
             conformations = []
             for mol_conformers in D_split:
                 conformations.extend(mol_conformers)
-            datasets[split] = ConformerDataset(conformations, tol=tol)
+            datasets[split] = ConformerDataset(conformations, tol=tol, p_drop_labels=p_drop_labels)
         self.datasets = datasets
 
     def train_dataloader(self):

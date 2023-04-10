@@ -42,6 +42,7 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     max_epochs: int = 3000
     lr: float = 2e-4
     puncond: float = 0.0
+    p_drop_labels: float = 0.1
 
     ema_decay: float = 0.9999
     clip_grad_norm: bool = True
@@ -96,6 +97,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         num_workers=cfg.num_workers,
         distributed=(cfg.strategy == "ddp"),
         tol=cfg.tol,
+        p_drop_labels=cfg.p_drop_labels
     )
 
     # Initialize and load model
