@@ -2,7 +2,7 @@ import dgl
 import torch
 import torch.linalg as LA
 
-def rotated_to_principal_axes(G, stable=False, return_moments=False, n_iter=19):
+def rotated_to_principal_axes(G, return_moments=False):
     with G.local_scope():
 
         # Center molecule to center of mass (CoM)
