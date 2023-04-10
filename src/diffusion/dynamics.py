@@ -36,8 +36,8 @@ class EquivariantDynamics(nn.Module):
         xyz = G.ndata["xyz"]  # for casting
 
         # Node features
-        atom_ids = F.one_hot(G.ndata["atom_ids"], num_classes=self.d_atom_vocab).to(xyz)  # (N d_vocab)
-        atom_masses = ATOM_MASSES[G.ndata["atom_nums"].cpu()].to(xyz)  # (N)
+        atom_one_hots = F.one_hot(G.ndata["atom_nums"].squeeze(-1), num_classes=self.d_atom_vocab).to(xyz)  # (N d_vocab)
+        atom_masses = G.ndata["atom_masses"].to(xyz)  # (N 1)
         temb = dgl.broadcast_nodes(G, t).to(xyz)  # (N)
 
         # Conditioning features
@@ -49,8 +49,8 @@ class EquivariantDynamics(nn.Module):
         moments_per_node = (moments / dgl.broadcast_nodes(G, G.batch_num_nodes()).unsqueeze(-1))
 
         features = [
-            atom_ids,
-            atom_masses.unsqueeze(-1) / 12.0,  # FIXME: the normalization is arbitrary here
+            atom_one_hots,
+            atom_masses / 12.0,  # FIXME: the normalization is arbitrary here
             temb.unsqueeze(-1),
             cond_mask,
             cond_labels,

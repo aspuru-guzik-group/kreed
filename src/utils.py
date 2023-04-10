@@ -12,10 +12,8 @@ from src.kraitchman import ATOM_MASSES
 
 def _weighted_mean(G, xyz):
     with G.local_scope():
-        m = ATOM_MASSES[G.ndata["atom_nums"].cpu()].to(G.device)
-        G.ndata["m"] = m.unsqueeze(-1)
         G.ndata["tmp"] = xyz
-        mean = dgl.sum_nodes(G, "tmp", weight="m") / dgl.sum_nodes(G, "m")
+        mean = dgl.sum_nodes(G, "tmp", weight="atom_masses") / dgl.sum_nodes(G, "atom_masses")
     return mean
 
 def zeroed_weighted_com(G, xyz):

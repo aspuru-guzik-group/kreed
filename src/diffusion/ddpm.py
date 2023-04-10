@@ -24,7 +24,7 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
 
     d_egnn_atom_vocab: int = 16
     d_egnn_hidden: int = 256
-    n_egnn_layers: int = 4
+    n_egnn_layers: int = 6
 
     # ===============
     # Schedule Fields
@@ -43,7 +43,7 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
     guidance_stable_pi: bool = True
 
 
-class EnEquivariantDDPM(nn.Module):
+class EquivariantDDPM(nn.Module):
 
     def __init__(self, config: EquivariantDDPMConfig):
         super().__init__()

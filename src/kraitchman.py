@@ -11,11 +11,13 @@ ATOM_MASSES = torch.tensor([0] + [PTABLE.GetMostCommonIsotopeMass(z) for z in ra
 
 def rotated_to_principal_axes(G, stable=False, return_moments=False, n_iter=19):
     with G.local_scope():
-        m = ATOM_MASSES[G.ndata["atom_nums"].cpu()].to(G.device)
 
         # Center molecule to center of mass (CoM)
-        G.ndata["m"] = m.unsqueeze(-1)
-        coms = dgl.sum_nodes(G, "xyz", weight="m") / dgl.sum_nodes(G, "m")
+        coms = dgl.sum_nodes(G, "xyz", weight="atom_masses") / dgl.sum_nodes(G, "atom_masses")
+        # print(coms, coms.shape)
+        # print(dgl.broadcast_nodes(G, coms), dgl.broadcast_nodes(G, coms).shape)
+        # print(G.ndata['xyz'], G.ndata['xyz'].shape)
+        # 1/0
 
         # Compute planar matrix of inertia
         xyz = G.ndata["xyz"] - dgl.broadcast_nodes(G, coms)
@@ -23,7 +25,7 @@ def rotated_to_principal_axes(G, stable=False, return_moments=False, n_iter=19):
 
         # P = sum_{i = 1}^n m_i * r_i * r_i^T
         B, N = G.batch_size, xyz.shape[0]
-        P = m.view(N, 1, 1) * torch.bmm(xyz.unsqueeze(-1), xyz.unsqueeze(-2))
+        P = G.ndata['atom_masses'].view(N, 1, 1) * torch.bmm(xyz.unsqueeze(-1), xyz.unsqueeze(-2))
 
         G.ndata["P"] = P.view(N, 9)  # flatten to use dgl.sum_nodes()
         P = dgl.sum_nodes(G, "P").view(B, 3, 3)
