@@ -118,13 +118,12 @@ class ConformerDatamodule(pl.LightningDataModule):
         coords = np.split(coords, start_indices[1:])
 
         # Group conformations by molecule
-        D = dict()
+        D = []
         for info, txyz in zip(metadata, coords):
             _, molecule_id, geom_id = list(info)
-            if molecule_id not in D:
-                D[molecule_id] = list()
+            if molecule_id >= len(D):
+                D.append([])
             D[molecule_id].append((txyz, geom_id))
-        D = list(D.values())
 
         # Create train/val/test split
         splits = {"train": None, "val": None, "test": None}
