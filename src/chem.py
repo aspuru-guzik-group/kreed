@@ -7,6 +7,16 @@ PTABLE = GetPeriodicTable()
 ATOM_MASSES = torch.tensor([0] + [PTABLE.GetMostCommonIsotopeMass(z) for z in range(1, 119)], dtype=torch.float32)
 ISOTOPICALLY_ABUNDANT_ATOMS = torch.tensor([5, 6, 7, 8, 14, 16, 17, 35, 80], dtype=torch.long)
 
+def _build_atom_map_cache():
+    geom_atoms = torch.tensor([1, 5, 6, 7, 8, 9, 13, 14, 15, 16, 17, 33, 35, 53, 80, 83], dtype=torch.long)
+
+    ztoi = torch.full([84], -100, dtype=torch.long)
+    for i, z in enumerate(geom_atoms):
+        ztoi[z] = i
+    return ztoi
+
+
+ATOM_ZTOI = _build_atom_map_cache()
 # _Molecule = collections.namedtuple(
 #     "Molecule",
 #     ["xyz", "atom_nums", "atom_masses", "cond_labels", "mask", "cond_mask", "moments", "id", "num_atoms"],

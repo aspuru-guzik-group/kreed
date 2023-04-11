@@ -47,6 +47,7 @@ class ConformerDataset(Dataset):
 
         G = dgl.graph((u, v), num_nodes=n)
         G.ndata["atom_nums"] = atom_nums  # (N)
+        G.ndata["atom_ids"] = chem.ATOM_ZTOI[atom_nums]  # (N)
         G.ndata["atom_masses"] = chem.ATOM_MASSES[atom_nums]  # (N)
         G.ndata["xyz"] = xyz  # (N 3)
 
