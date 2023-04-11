@@ -35,7 +35,7 @@ class EquivariantDynamics(nn.Module):
         xyz = G.ndata["xyz"]  # for casting
 
         # Node features
-        atom_one_hots = F.one_hot(G.ndata["atom_nums"].squeeze(-1), num_classes=self.d_atom_vocab).to(xyz)  # (N d_vocab)
+        atom_one_hots = F.one_hot(G.ndata["atom_ids"].squeeze(-1), num_classes=self.d_atom_vocab).to(xyz)  # (N d_vocab)
         atom_masses = G.ndata["atom_masses"].to(xyz)  # (N 1)
         temb = dgl.broadcast_nodes(G, t).to(xyz)  # (N)
 
