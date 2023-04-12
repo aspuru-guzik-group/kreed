@@ -1,4 +1,22 @@
 
+## Download preprocessed datasets
+
+With `data` as your current working directory, download these two files and extract them. Make sure `gdown` has been installed. You can try `pip install gdown`.
+
+For QM9:
+```
+gdown '1jmc2JBoXJxat_Aq74E3ffCIQGKH9JuG-'
+tar -xf qm9_processed.tar.gz
+```
+
+For GEOM:
+```
+gdown '1UXDaJak686jtEyyfJrTxkiOkYT1SsKyK'
+tar -xf geom_processed.tar.gz
+```
+
+## Setup instructions from scratch (not necessary)
+
 conda env 
 
 1. Download and extract qm9_crude.msgpack from https://dataverse.harvard.edu/file.xhtml?fileId=4327190&version=4.0
