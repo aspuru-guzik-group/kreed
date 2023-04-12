@@ -38,4 +38,4 @@ def test_diffusion():
     G_gen, frames = ddpm.sample_p_G(G_init=G_init, keep_frames=[3, 4])
     assert len(frames) == 4
 
-    utils.assert_zeroed_weighted_com(G_gen, G_gen.ndata["xyz"])
+    utils.assert_orthogonal_projection(G_gen, G_gen.ndata["xyz"])
