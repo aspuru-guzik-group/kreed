@@ -8,35 +8,35 @@ def _mean(G, xyz):
         mean = dgl.mean_nodes(G, "tmp")
     return mean
 
-from src.kraitchman import ATOM_MASSES
-
 def _weighted_mean(G, xyz):
     with G.local_scope():
-        m = ATOM_MASSES[G.ndata["atom_nums"].cpu()].to(G.device)
-        G.ndata["m"] = m.unsqueeze(-1)
         G.ndata["tmp"] = xyz
-        mean = dgl.sum_nodes(G, "tmp", weight="m") / dgl.sum_nodes(G, "m")
+        mean = dgl.sum_nodes(G, "tmp", weight="atom_masses") / dgl.sum_nodes(G, "atom_masses")
     return mean
 
-def zeroed_weighted_com(G, xyz):
-    return xyz - dgl.broadcast_nodes(G, _weighted_mean(G, xyz))
+def get_shift(G, xyz):
+    with G.local_scope():
+        total_masses = dgl.sum_nodes(G, 'atom_masses') # (B 1)
+        G.ndata['m'] = G.ndata['atom_masses'] / dgl.broadcast_nodes(G, total_masses) # (N 1)
 
-def assert_zeroed_weighted_com(G, xyz=None):
+        G.ndata['m2'] = G.ndata['m'].square() # (N 1)
+        m_norm = dgl.sum_nodes(G, 'm2') # (B 1)
+
+        G.ndata['tmpxyz'] = xyz
+        pcom = dgl.sum_nodes(G, 'tmpxyz', 'm') # (B 3)
+        G.ndata['pcom'] = dgl.broadcast_nodes(G, pcom) # (N 3)
+
+        shift = G.ndata['pcom'] * G.ndata['m'] / dgl.broadcast_nodes(G, m_norm) # (N 3)
+        return shift
+
+def orthogonal_projection(G, xyz):
+    return xyz - get_shift(G, xyz)
+
+def assert_orthogonal_projection(G, xyz=None):
     if xyz is None:
         xyz = G.ndata["xyz"]
-    com = _weighted_mean(G, xyz)
-    error = com.abs().max().item() / (xyz.abs().max().item() + 1e-8)
-    assert error < 1e-4, error
-
-def zeroed_com(G, xyz):
-    return xyz - dgl.broadcast_nodes(G, _mean(G, xyz))
-
-
-def assert_zeroed_com(G, xyz=None):
-    if xyz is None:
-        xyz = G.ndata["xyz"]
-    com = _mean(G, xyz)
-    error = com.abs().max().item() / xyz.abs().max().item()
+    diff = xyz - orthogonal_projection(G, xyz)
+    error = diff.abs().max().item() / (xyz.abs().max().item() + 1e-8)
     assert error < 1e-4, error
 
 

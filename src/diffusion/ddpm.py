@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 from src import utils
 from src.diffusion.dynamics import EquivariantDynamics
-from src.modules import NoiseSchedule, KraitchmanClassifier
+from src.modules import NoiseSchedule
 
 from tqdm import tqdm
 
@@ -24,26 +24,20 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
 
     d_egnn_atom_vocab: int = 16
     d_egnn_hidden: int = 256
-    n_egnn_layers: int = 4
+    n_egnn_layers: int = 6
 
     # ===============
-    # Schedule Fields
+    # Sampling Fields
     # ===============
 
     timesteps: int = 1000
     noise_shape: str = "polynomial_2"
     noise_precision: float = 1e-5
 
-    # =================
-    # Classifier Fields
-    # =================
-
-    guidance: bool = True
-    guidance_stdev: float = 1.0
-    guidance_stable_pi: bool = True
+    guidance_strength: float = 1.0
 
 
-class EnEquivariantDDPM(nn.Module):
+class EquivariantDDPM(nn.Module):
 
     def __init__(self, config: EquivariantDDPMConfig):
         super().__init__()
@@ -57,11 +51,6 @@ class EnEquivariantDDPM(nn.Module):
             d_hidden=cfg.d_egnn_hidden,
             n_layers=cfg.n_egnn_layers,
         )
-
-        if cfg.guidance:
-            self.classifier = KraitchmanClassifier(scale=cfg.guidance_stdev, stable=cfg.guidance_stable_pi)
-        else:
-            self.classifier = None
 
         self.T = cfg.timesteps
         self.gamma = NoiseSchedule(cfg.noise_shape, timesteps=self.T, precision=cfg.noise_precision)
@@ -103,7 +92,7 @@ class EnEquivariantDDPM(nn.Module):
 
     def sample_randn_G_like(self, G_init, mean=None, std=None, return_noise=False):
         eps = torch.randn_like(G_init.ndata["xyz"])
-        eps = utils.zeroed_weighted_com(G_init, eps)
+        eps = utils.orthogonal_projection(G_init, eps)
 
         G = G_init.local_var()
         if (mean is None) and (std is None):
@@ -117,11 +106,11 @@ class EnEquivariantDDPM(nn.Module):
             print('nan detected in sampling')
             G.ndata['xyz'] = torch.where(torch.isnan(G.ndata['xyz']), 0.0, G.ndata['xyz'])
                 
-        utils.assert_zeroed_weighted_com(G)
+        utils.assert_orthogonal_projection(G)
 
         return G if not return_noise else (G, eps)
 
-    def sample_p_Gs_given_Gt(self, G_t, s, t, guidance_scale=0.0):
+    def sample_p_Gs_given_Gt(self, G_t, s, t):
         gamma_s = self.gamma(s)
         gamma_t = self.gamma(t)
 
@@ -135,17 +124,6 @@ class EnEquivariantDDPM(nn.Module):
         eps_t = self.dynamics(G=G_t, t=(t.float() / self.T))
         mu = (G_t.ndata["xyz"] / alpha_t_given_s) - ((sigma2_t_given_s / alpha_t_given_s / sigma_t) * eps_t)
         sigma = sigma_t_given_s * sigma_s / sigma_t
-
-        # Classifier guidance (if applicable)
-        if (self.classifier is not None) and (guidance_scale > 0.0):
-            G_mean = G_t.local_var()
-            G_mean.ndata["xyz"] = mu
-
-            g = self.classifier.grad_log_p_y_given_Gt(G_t=G_mean)
-            g = g.clip(min=-100.0, max=100.0)
-
-            mu = mu + (guidance_scale * sigma.square() * g)
-            mu = utils.zeroed_weighted_com(G_t, mu)
 
         return self.sample_randn_G_like(G_t, mean=mu, std=sigma)
 
@@ -163,20 +141,20 @@ class EnEquivariantDDPM(nn.Module):
         return self.sample_randn_G_like(G_0, mean=mu, std=sigma)
 
     @torch.no_grad()
-    def sample_p_G(self, G_init, keep_frames=None, guidance_scale=0.0):
+    def sample_p_G(self, G_init, keep_frames=None):
         G_T = self.sample_randn_G_like(G_init)
-        utils.assert_zeroed_weighted_com(G_T)
+        utils.assert_orthogonal_projection(G_T)
 
         frames = {self.T: G_T}
 
         G_t = G_T
         for step in tqdm(reversed(range(0, self.T)), desc='Sampling', leave=False, total=self.T):
             s = torch.full([G_T.batch_size], fill_value=step, device=G_T.device)
-            G_t = self.sample_p_Gs_given_Gt(G_t=G_t, s=s, t=(s + 1), guidance_scale=guidance_scale)
+            G_t = self.sample_p_Gs_given_Gt(G_t=G_t, s=s, t=(s + 1))
             if (keep_frames is not None) and (step in keep_frames):
                 frames[step] = G_t
         G = self.sample_p_G_given_G0(G_t)
-        utils.assert_zeroed_weighted_com(G)  # sanity check
+        utils.assert_orthogonal_projection(G)  # sanity check
 
         frames[-1] = G
 

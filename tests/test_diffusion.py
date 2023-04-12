@@ -1,17 +1,25 @@
 import torch
 
-from src.datamodules import QM9Datamodule
+from src.datamodule import ConformerDatamodule
 from src.diffusion.dynamics import EquivariantDynamics
-from src.diffusion.ddpm import EnEquivariantDDPM, EquivariantDDPMConfig
+from src.diffusion.ddpm import EquivariantDDPM, EquivariantDDPMConfig
 from src import utils
 
 
 def test_diffusion():
-    B = 64
-    data = QM9Datamodule(100, B)
+    data = ConformerDatamodule(
+        dataset="qm9",
+        seed=100,
+        batch_size=512,
+        split_ratio=(0.8, 0.1, 0.1),
+        num_workers=8,
+        distributed=False,
+        tol=-1.0,
+        p_drop_labels=0.0,
+    )
     G = data.datasets['train'][0]
 
-    ddpm = EnEquivariantDDPM(
+    ddpm = EquivariantDDPM(
         EquivariantDDPMConfig(
             equivariance="reflect",
             timesteps=10,
@@ -30,4 +38,4 @@ def test_diffusion():
     G_gen, frames = ddpm.sample_p_G(G_init=G_init, keep_frames=[3, 4])
     assert len(frames) == 4
 
-    utils.assert_zeroed_weighted_com(G_gen, G_gen.ndata["xyz"])
+    utils.assert_orthogonal_projection(G_gen, G_gen.ndata["xyz"])

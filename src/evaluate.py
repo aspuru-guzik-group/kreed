@@ -34,7 +34,7 @@ def align_and_rmsd(G_pred, G_truth):
     for flip in flips:
         xyz_pred = G_pred.ndata['xyz'] * flip
         xyz_truth = G_truth.ndata['xyz']
-        atom_nums = G_pred.ndata['atom_nums']
+        atom_nums = G_pred.ndata['atom_nums'].squeeze(-1)
 
         # heavy atoms only
         xyz_pred = xyz_pred[atom_nums != 1]
@@ -52,7 +52,7 @@ def evaluate(G_pred, G_truth):
     coords_pred = G_pred.ndata['xyz']
     coords_pred = torch.where(torch.isnan(coords_pred), 0.0, coords_pred)
     coords_true = G_truth.ndata['xyz']
-    atom_nums = G_pred.ndata['atom_nums']
+    atom_nums = G_pred.ndata['atom_nums'].squeeze(-1)
 
     nonhydrogen = (atom_nums != 1)
 

@@ -160,3 +160,9 @@ geom_samples_before_mar_1
 checkpoints/
 
 v_geom_samples/
+
+data/old_geom
+data/old_qm9
+data/geom
+data/qm9
+

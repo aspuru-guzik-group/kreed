@@ -1,7 +1,7 @@
 import torch
 import sys
 sys.path.append('.')
-from src.datamodules.qm9 import QM9Datamodule
+from src.datamodule import ConformerDatamodule
 from src.diffusion.dynamics import EquivariantDynamics
 from copy import deepcopy
 import numpy as np
@@ -15,7 +15,16 @@ rot_mat = torch.tensor(rot_mat).float()
 
 def test_reflection_model():
 
-    data = QM9Datamodule(100, 2)
+    data = ConformerDatamodule(
+        dataset="qm9",
+        seed=100,
+        batch_size=512,
+        split_ratio=(0.8, 0.1, 0.1),
+        num_workers=8,
+        distributed=False,
+        tol=-1.0,
+        p_drop_labels=0.0,
+    )
     G = data.datasets['train'][0]
 
     dynamics = EquivariantDynamics('reflect', 16, 256, 4)
@@ -51,7 +60,16 @@ def test_reflection_model():
 
 def test_rotation_model():
 
-    data = QM9Datamodule(100, 2)
+    data = ConformerDatamodule(
+        dataset="qm9",
+        seed=100,
+        batch_size=512,
+        split_ratio=(0.8, 0.1, 0.1),
+        num_workers=8,
+        distributed=False,
+        tol=-1.0,
+        p_drop_labels=0.0,
+    )
     G = data.datasets['train'][0]
 
     dynamics = EquivariantDynamics('e3', 16, 256, 4)
