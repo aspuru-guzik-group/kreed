@@ -92,7 +92,7 @@ class EquivariantDDPM(nn.Module):
 
     def sample_randn_G_like(self, G_init, mean=None, std=None, return_noise=False):
         eps = torch.randn_like(G_init.ndata["xyz"])
-        eps = utils.orthogonal_projection(G_init, eps)
+        eps = utils.zeroed_weighted_com(G_init, eps)
 
         G = G_init.local_var()
         if (mean is None) and (std is None):
@@ -106,7 +106,7 @@ class EquivariantDDPM(nn.Module):
             print('nan detected in sampling')
             G.ndata['xyz'] = torch.where(torch.isnan(G.ndata['xyz']), 0.0, G.ndata['xyz'])
                 
-        utils.assert_orthogonal_projection(G)
+        utils.assert_zeroed_weighted_com(G)
 
         return G if not return_noise else (G, eps)
 
@@ -143,7 +143,7 @@ class EquivariantDDPM(nn.Module):
     @torch.no_grad()
     def sample_p_G(self, G_init, keep_frames=None):
         G_T = self.sample_randn_G_like(G_init)
-        utils.assert_orthogonal_projection(G_T)
+        utils.assert_zeroed_weighted_com(G_T)
 
         frames = {self.T: G_T}
 
@@ -154,7 +154,7 @@ class EquivariantDDPM(nn.Module):
             if (keep_frames is not None) and (step in keep_frames):
                 frames[step] = G_t
         G = self.sample_p_G_given_G0(G_t)
-        utils.assert_orthogonal_projection(G)  # sanity check
+        utils.assert_zeroed_weighted_com(G)  # sanity check
 
         frames[-1] = G
 

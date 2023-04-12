@@ -74,4 +74,4 @@ class EquivariantDynamics(nn.Module):
             h, xyz = block(G, h=h, x=xyz, a=a)
         vel = xyz - G.ndata["xyz"]
 
-        return utils.orthogonal_projection(G, vel)
+        return utils.zeroed_weighted_com(G, vel)
