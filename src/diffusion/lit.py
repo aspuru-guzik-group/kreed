@@ -4,6 +4,7 @@ from typing import List
 
 import dgl
 import pytorch_lightning as pl
+import torch_ema
 import torch
 import tqdm
 import wandb
@@ -37,8 +38,20 @@ class LitEquivariantDDPM(pl.LightningModule):
         self.edm = EquivariantDDPM(config=config)
         self.grad_norm_queue = collections.deque([3000, 3000], maxlen=50)
 
+        trainable_params = [p for p in self.edm.parameters() if p.requires_grad]
+        self.ema = torch_ema.ExponentialMovingAverage(trainable_params, decay=config.ema_decay)
+        self.ema_moved_to_device = False
+
     def configure_optimizers(self):
         return torch.optim.Adam(params=self.edm.parameters(), lr=self.hparams.lr)
+
+    def optimizer_step(self, *args, **kwargs):
+        super().optimizer_step(*args, **kwargs)
+
+        if not self.ema_moved_to_device:
+            self.ema.to(self.device)
+            self.ema_moved_to_device = True
+        self.ema.update()
 
     def configure_gradient_clipping(self, optimizer, gradient_clip_val=None, gradient_clip_algorithm=None):
         if not self.hparams.clip_grad_norm:
@@ -55,10 +68,12 @@ class LitEquivariantDDPM(pl.LightningModule):
         return self._step(batch, split="train", batch_idx=batch_idx)
 
     def validation_step(self, batch, batch_idx):
-        return self._step(batch, split="val", batch_idx=batch_idx)
+        with self.ema.average_parameters():
+            return self._step(batch, split="val", batch_idx=batch_idx)
 
     def test_step(self, batch, batch_idx):
-        return self._step(batch, split="test", batch_idx=batch_idx)
+        with self.ema.average_parameters():
+            return self._step(batch, split="test", batch_idx=batch_idx)
 
     # def _step(self, G, split, batch_idx):
     #     hp = self.hparams
@@ -150,3 +165,5 @@ class LitEquivariantDDPM(pl.LightningModule):
         self.log(f"{folder}/carbon_abs_rmsd", abs_C_rmsds, batch_size=G.batch_size)
         self.log(f"{folder}/heavy_rmsd", heavy_rmsds, batch_size=G.batch_size)
         self.log(f"{folder}/correctness", correctness, batch_size=G.batch_size)
+
+# also remember to comment out EMA in the train.py

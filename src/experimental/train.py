@@ -66,7 +66,7 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     wandb_run_id: str = "tmp"
 
     checkpoint: bool = True
-    checkpoint_dir: str = "."
+    checkpoint_dir: str = "checkpoints" # the folder where you keep all your checkpoints
     checkpoint_train_time_interval: int = 10  # minutes
 
     log_every_n_steps: int = 10
@@ -87,6 +87,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
     root = pathlib.Path(__file__).parents[2]
     log_dir = root / "logs"
     log_dir.mkdir(exist_ok=True)
+
 
     # Load data
     data = ConformerDatamodule(
@@ -114,13 +115,15 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         distributed=(cfg.strategy == "ddp"),
     )
 
+    save_dir = pathlib.Path(cfg.checkpoint_dir) / cfg.wandb_run_id
+    save_dir.mkdir(parents=True, exist_ok=True)
     if cfg.wandb:
         project = "train_edm" + ("_debug" if cfg.debug else "")
         logger = WandbLogger(
             project=project,
             entity=cfg.wandb_entity,
             log_model=True,
-            save_dir=cfg.checkpoint_dir,
+            save_dir=save_dir,
             config=dict(cfg),
             id=cfg.wandb_run_id,
             resume="allow",
@@ -130,13 +133,13 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
 
     callbacks = [
         ModelSummary(max_depth=2),
-        EMA(decay=cfg.ema_decay, cpu_offload=True),
+        # EMA(decay=cfg.ema_decay, cpu_offload=True),
     ]
 
     if cfg.checkpoint:
         callbacks.append(
             ModelCheckpoint(
-                dirpath=cfg.checkpoint_dir,
+                dirpath=save_dir,
                 monitor="val/nll",
                 save_top_k=3,
                 save_last=True,
@@ -169,7 +172,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         **debug_kwargs,
     )
 
-    ckpt_path = pathlib.Path(cfg.checkpoint_dir) / "last.ckpt"
+    ckpt_path = save_dir / "last.ckpt"
     ckpt_path = str(ckpt_path) if ckpt_path.exists() else None
     trainer.fit(model=ddpm, datamodule=data, ckpt_path=ckpt_path)
 
