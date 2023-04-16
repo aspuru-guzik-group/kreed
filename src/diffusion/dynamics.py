@@ -1,77 +1,119 @@
-import dgl
-import dgl.function as fn
 import torch
-import torch.linalg as LA
 import torch.nn as nn
-import torch.nn.functional as F
 
 from src import utils
-from src.modules import EquivariantBlock
+from src.modules import Activation, EquivariantBlock, LayerNorm
+
+
+class DummyDynamics(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+
+        # Here so there is a parameter to train
+        self.eps = nn.Parameter(torch.ones(1))
+
+    def forward(self, M, temb):
+        eps = self.eps * torch.randn_like(M.coords)
+        return utils.zeroed_com(M, eps, orthogonal=False)
 
 
 class EquivariantDynamics(nn.Module):
 
-    def __init__(self, equivariance, d_atom_vocab, d_hidden, n_layers):
-        assert equivariance in {"e3", "reflect"}
+    def __init__(
+        self,
+        atom_features,
+        temb_features,
+        cond_features,
+        hidden_features,
+        num_layers,
+        norm_before_blocks,
+        norm_hidden_type,
+        norm_adaptively,
+        zero_com_after_blocks,
+        act,
+        egnn_distance_fns,
+        norm_coords_type,
+        **kwargs
+    ):
         super().__init__()
 
-        self.d_atom_vocab = d_atom_vocab
-        self.proj_h = nn.Linear(11 + d_atom_vocab, d_hidden)
-        self.is_e3 = (equivariance == "e3")
+        self.egnn_distance_fns = egnn_distance_fns
+        self.num_layers = num_layers
+        self.norm_before_blocks = norm_before_blocks
+        self.norm_adaptively = norm_adaptively
+        self.zero_com_after_blocks = zero_com_after_blocks
 
-        self.eq_blocks = nn.ModuleList([
-            EquivariantBlock(
-                d_coords=3,
-                d_hidden=d_hidden,
-                d_edges=(1 if self.is_e3 else 4),
-                update_hidden=(i + 1 < n_layers),
-                equivariance=equivariance,
+        # atom emb + time emb + mass + mass_normalized + cond_coords + cond_mask + moments
+        self.embed_atom = nn.Embedding(82, atom_features)  # kind of wasteful but makes code simpler
+        nf = atom_features + temb_features + 1 + 1 + 3 + 3 + 3
+        self.proj_h = nn.Linear(nf, hidden_features)
+
+        if norm_adaptively:
+            assert norm_before_blocks
+            adaptive_features = cond_features
+            self.proj_cond = nn.Sequential(
+                nn.Linear(nf, cond_features),
+                Activation(act),
+                nn.Linear(cond_features, cond_features),
+                Activation(act),
             )
-            for i in range(n_layers)
-        ])
+        else:
+            adaptive_features = -1
+            self.proj_cond = None
 
-    def featurize_nodes(self, G, t):
-        assert (t.ndim == 1) and torch.is_floating_point(t)
-        xyz = G.ndata["xyz"]  # for casting
+        self.egnn = nn.ModuleList()
 
-        # Node features
-        atom_one_hots = F.one_hot(G.ndata["atom_ids"].squeeze(-1), num_classes=self.d_atom_vocab).to(xyz)  # (N d_vocab)
-        atom_masses = G.ndata["atom_masses"].to(xyz)  # (N 1)
-        temb = dgl.broadcast_nodes(G, t).to(xyz)  # (N)
+        for i in range(num_layers):
+            blocks = {}
 
-        # Conditioning features
-        cond_labels = G.ndata["cond_labels"].to(xyz)  # (N 3)
-        cond_mask = G.ndata["cond_mask"].to(xyz)  # (N 3)
+            if norm_before_blocks:
+                blocks["norm_hidden"] = LayerNorm(hidden_features, adaptive_features)
 
-        # moments
-        moments = G.ndata["moments"].to(xyz)  # (N 3)
-        moments_per_node = (moments / dgl.broadcast_nodes(G, G.batch_num_nodes()).unsqueeze(-1))
+            blocks["equivariant"] = EquivariantBlock(
+                dim=3,
+                hidden_features=hidden_features,
+                edge_features=EquivariantBlock.distance_features(3, egnn_distance_fns),
+                distance_fns=egnn_distance_fns,
+                act=act,
+                update_hidden=(i + 1 < num_layers),
+            )
 
-        features = [
-            atom_one_hots,
-            atom_masses / 12.0,  # FIXME: the normalization is arbitrary here
-            temb.unsqueeze(-1),
-            cond_mask,
-            cond_labels,
-            moments_per_node / 12.0,
-        ]
+            self.egnn.append(nn.ModuleDict(blocks))
 
-        return torch.cat(features, dim=-1)  # (N d_vocab+11)
+    def forward(self, M, temb):
+        assert temb.ndim == 2
+        utils.assert_zeroed_com(M, M.coords)
 
-    def forward(self, G, t):
-        xyz = G.ndata["xyz"] # (N 3)
+        aemb = self.embed_atom(M.atom_nums.squeeze(-1))
+        f = [aemb, temb, M.masses / 12.0, M.masses_normalized, M.cond_labels, M.cond_mask.float(), M.moments]
+        f = torch.cat(f, dim=-1)
 
-        with G.local_scope():
-            G.apply_edges(fn.u_sub_v("xyz", "xyz", "xyz_diff"))
-            a = [LA.norm(G.edata["xyz_diff"], ord=2, dim=-1, keepdim=True)]
-            if not self.is_e3:
-                a = a + [G.edata["xyz_diff"].abs()]
-            a = torch.cat(a, dim=-1)
+        if self.proj_cond is None:
+            cond = None
+        else:
+            cond = self.proj_cond(f)
 
-        h = self.featurize_nodes(G=G, t=t)
-        h = self.proj_h(h)
-        for block in self.eq_blocks:
-            h, xyz = block(G, h=h, x=xyz, a=a)
-        vel = xyz - G.ndata["xyz"]
+        h = self.proj_h(f)
+        coords = M.coords
 
-        return utils.zeroed_weighted_com(G, vel)
+        # Get base edge features
+        with torch.no_grad():
+            M.graph.ndata["x"] = coords
+            M.graph.apply_edges(
+                lambda edges: {
+                    "a": EquivariantBlock.distances(edges, "x", fns=self.egnn_distance_fns)
+                }
+            )
+            M.graph.ndata.pop("x")
+            a = M.graph.edata.pop("a")
+
+        for i, blocks in enumerate(self.egnn):
+            if self.norm_before_blocks:
+                h = blocks["norm_hidden"](M=M, h=h, y=cond)
+            h, coords = blocks["equivariant"](M=M, h=h, coords=coords, a=a)
+
+            if self.zero_com_after_blocks:
+                coords = utils.zeroed_com(M, coords, orthogonal=False)
+
+        return coords

@@ -1,5 +1,7 @@
 import collections
+import functools
 
+import dgl
 import torch
 from rdkit import Chem
 from rdkit.Chem import rdDetermineBonds
@@ -16,7 +18,12 @@ def atom_masses_from_nums(atom_nums):
 
 _Molecule = collections.namedtuple(
     "_Molecule",
-    ["graph", "coords", "atom_nums", "cond_labels", "cond_mask", "moments", "id"],
+    [
+        "graph",
+        "coords", "atom_nums", "masses", "masses_normalized",
+        "cond_labels", "cond_mask",
+        "moments", "id"
+    ],
 )
 
 
@@ -25,10 +32,10 @@ class Molecule(_Molecule):
     @classmethod
     def from_dgl(cls, G):
         kwargs = {"graph": G}
-        for field in _Molecule._fields:
+        for field in Molecule._fields:
             if field != "graph":
                 kwargs[field] = G.ndata.pop(field)
-        return _Molecule(**kwargs)
+        return Molecule(**kwargs)
 
     @classmethod
     def to_dgl(cls, M):
@@ -38,14 +45,67 @@ class Molecule(_Molecule):
                 G.ndata[field] = val
         return G
 
+    # =============
+    # DGL Utilities
+    # =============
+
+    def broadcast(self, x):
+        return dgl.broadcast_nodes(self.graph, x)
+
+    def readout_pool(self, x, op, broadcast=False):
+        self.graph.ndata["tmp"] = x.flatten(start_dim=1) if (x.ndim > 1) else x.unsqueeze(-1)
+        pooled = dgl.readout_nodes(self.graph, "tmp", op=op)
+        del self.graph.ndata["tmp"]
+        if broadcast:
+            pooled = self.broadcast(pooled)
+        return pooled.view(-1, *x.shape[1:])
+
+    sum_pool = functools.partialmethod(readout_pool, op="sum")
+    mean_pool = functools.partialmethod(readout_pool, op="mean")
+
+    # ==============
+    # Chem Utilities
+    # ==============
+
     def xyzfile(self):
-        file = f"{self.num_atoms}\n\n"
-        for a, p in zip(self.atom_nums, self.xyz):
+        assert not self.batched
+        file = f"{self.coords.shape[0]}\n\n"
+        for a, p in zip(self.atom_nums, self.coords):
             x, y, z = p.tolist()
             file += f"{PTABLE.GetElementSymbol(int(a))} {x:f} {y:f} {z:f}\n"
         return file
 
     def smiles(self):
+        assert not self.batched
         mol = Chem.MolFromXYZBlock(self.xyzfile())
         rdDetermineBonds.DetermineConnectivity(mol)
         return Chem.MolToSmiles(mol)
+
+    # ==========
+    # Properties
+    # ==========
+
+    @property
+    def batched(self):
+        return self.batch_size > 1
+
+    @property
+    def batch_size(self):
+        return self.graph.batch_size
+
+    @property
+    def num_atoms(self):
+        return self.graph.batch_num_nodes()
+
+    @property
+    def device(self):
+        return self.graph.device
+
+    def cpu(self):
+        return self._replace(**{field: x.cpu() for field, x in self._asdict().items()})
+
+    def unbatch(self):
+        return [Molecule.from_dgl(G) for G in dgl.unbatch(Molecule.to_dgl(self))]
+
+    def replace(self, **kwargs):
+        return self._replace(**kwargs)

@@ -52,6 +52,10 @@ class ConformerDataset(Dataset):
         coords = torch.tensor(txyz[:, 1:], dtype=torch.float)  # (N 3)
         atom_nums = torch.tensor(txyz[:, :1], dtype=torch.long)  # (N 1)
 
+        # Precompute
+        masses = chem.atom_masses_from_nums(atom_nums)
+        masses_normalized = masses / masses.sum()
+
         # Canonicalize conformation
         coords, moments = kraitchman.rotated_to_principal_axes(coords, atom_nums, return_moments=True)
 
@@ -73,12 +77,9 @@ class ConformerDataset(Dataset):
         # Wrapper
         M = chem.Molecule(
             graph=G,
-            coords=coords,
-            atom_nums=atom_nums,
-            cond_labels=cond_labels,
-            cond_mask=cond_mask,
-            moments=moments,
-            id=geom_id,
+            coords=coords, atom_nums=atom_nums, masses=masses, masses_normalized=masses_normalized,
+            cond_labels=cond_labels, cond_mask=cond_mask,
+            moments=moments, id=geom_id,
         )
 
         # Convert to DGL to take advantage of DGL batching

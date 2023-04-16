@@ -1,30 +1,45 @@
-from typing import Literal
+import functools
+from typing import List, Literal
 
-import dgl
 import numpy as np
 import pydantic
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import tqdm
 
 from src import utils
-from src.diffusion.dynamics import EquivariantDynamics
-from src.modules import NoiseSchedule
+from src.diffusion.dynamics import DummyDynamics, EquivariantDynamics
+from src.modules import EquivariantBlock, NoiseSchedule, PositionalEmbedding
 
-from tqdm import tqdm
 
 class EquivariantDDPMConfig(pydantic.BaseModel):
     """Configuration object for the DDPM."""
 
-    equivariance: Literal["e3", "reflect"] = "reflect"
+    # ============
+    # Model Fields
+    # ============
 
-    # ===========
-    # EGNN Fields
-    # ===========
+    architecture: Literal["dummy", "edm"] = "edm"
+    parameterization: Literal["eps", "x"] = "eps"
+    timestep_embedding: Literal["none", "positional"] = "positional"
 
-    d_egnn_atom_vocab: int = 16
-    d_egnn_hidden: int = 256
-    n_egnn_layers: int = 6
+    atom_features: int = 32
+    temb_features: int = 128
+    cond_features: int = 128
+    hidden_features: int = 256
+
+    num_layers: int = 9
+    norm_before_blocks: bool = True
+    norm_hidden_type: Literal["layer", "instance"] = "layer"
+    norm_adaptively: bool = True
+    zero_com_after_blocks: bool = True
+
+    act: Literal["silu", "gelu"] = "silu"
+
+    # The following will impact equivariance
+    egnn_distance_fns: List[str] = sorted(EquivariantBlock.DISTANCE_FN_REGISTRY)
+    norm_coords_type: Literal["se3", "ref"] = "se3"
 
     # ===============
     # Sampling Fields
@@ -34,7 +49,7 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
     noise_shape: str = "polynomial_2"
     noise_precision: float = 1e-5
 
-    guidance_strength: float = 1.0
+    guidance_strength: float = 0.0
 
 
 class EquivariantDDPM(nn.Module):
@@ -45,39 +60,71 @@ class EquivariantDDPM(nn.Module):
         self.config = config
         cfg = config
 
-        self.dynamics = EquivariantDynamics(
-            equivariance=cfg.equivariance,
-            d_atom_vocab=cfg.d_egnn_atom_vocab,
-            d_hidden=cfg.d_egnn_hidden,
-            n_layers=cfg.n_egnn_layers,
-        )
+        if cfg.timestep_embedding == "positional":
+            self.embed_timestep = PositionalEmbedding(cfg.temb_features)
+        else:
+            cfg.temb_features = 1
+            self.embed_timestep = None
+
+        if cfg.architecture == "dummy":
+            self.dynamics = DummyDynamics()  # for debugging
+        elif cfg.architecture == "edm":
+            self.dynamics = EquivariantDynamics(**dict(cfg))
+        else:
+            raise ValueError()
 
         self.T = cfg.timesteps
         self.gamma = NoiseSchedule(cfg.noise_shape, timesteps=self.T, precision=cfg.noise_precision)
 
-    def dimensionality(self, G):
-        # always subspace where weighted center of mass is 0
-        return (G.batch_num_nodes() - 1) * 3
+    def broadcast_scalar(self, M, t):
+        t = t.view(-1, 1)
+        if t.shape[0] == M.batch_size:
+            t = M.broadcast(t)
+        assert t.shape[0] == M.coords.shape[0]
+        return t
 
-    def broadcast_scalar(self, val, G=None):
-        if G is None:
-            return val
-        assert val.ndim == 1, val.shape
-        return dgl.broadcast_nodes(G, val).unsqueeze(-1)
+    def forward(self, M, t, puncond=0.0):
+        cfg = self.config
 
-    def sigma(self, gamma, broadcast_to=None):
-        sigma = torch.sigmoid(gamma).sqrt()
-        return self.broadcast_scalar(sigma, G=broadcast_to)
+        if puncond > 0:
+            uncond_mask = torch.rand([M.batch_size, 1]).to(M.coords) <= puncond
+            uncond_mask = M.broadcast(uncond_mask)
+            M = M.replace(
+                cond_labels=torch.where(uncond_mask, 0.0, M.cond_labels),
+                cond_mask=torch.where(uncond_mask, False, M.cond_labels),
+                moments=torch.where(uncond_mask, 0.0, M.moments),
+            )
 
-    def alpha(self, gamma, broadcast_to=None):
-        alpha = torch.sigmoid(-gamma).sqrt()
-        return self.broadcast_scalar(alpha, G=broadcast_to)
+        t = self.broadcast_scalar(M, t)
+        if cfg.timestep_embedding == "none":
+            temb = t.float() / self.T
+        else:
+            temb = self.embed_timestep(t)
 
-    @staticmethod
-    def SNR(gamma):
+        out = self.dynamics(M=M, temb=temb)
+
+        if cfg.parameterization == "eps":
+            out = out - M.coords
+
+        return utils.zeroed_com(M, out, orthogonal=False)
+
+    def guided_forward(self, M, t, w=None):
+        w = self.config.guidance_strength if (w is None) else w
+        if w == 0:
+            return self(M=M, t=t)
+        else:
+            return ((1 + w) * self(M=M, t=t, puncond=0.0)) - (w * self(M=M, t=t, puncond=1.0))
+
+    def sigma(self, gamma):
+        return torch.sigmoid(gamma).sqrt()
+
+    def alpha(self, gamma):
+        return torch.sigmoid(-gamma).sqrt()
+
+    def SNR(self, gamma):
         return torch.exp(-gamma)
 
-    def sigma_and_alpha_t_given_s(self, gamma_t, gamma_s, broadcast_to=None):
+    def sigma_and_alpha_t_given_s(self, gamma_t, gamma_s):
         sigma2_t_given_s = -torch.expm1(F.softplus(gamma_s) - F.softplus(gamma_t))
 
         log_alpha2_t = F.logsigmoid(-gamma_t)
@@ -87,154 +134,139 @@ class EquivariantDDPM(nn.Module):
         alpha_t_given_s = torch.exp(0.5 * log_alpha2_t_given_s)
         sigma_t_given_s = torch.sqrt(sigma2_t_given_s)
 
-        values = (sigma2_t_given_s, sigma_t_given_s, alpha_t_given_s)
-        return tuple(self.broadcast_scalar(x, G=broadcast_to) for x in values)
+        return sigma2_t_given_s, sigma_t_given_s, alpha_t_given_s
 
-    def sample_randn_G_like(self, G_init, mean=None, std=None, return_noise=False):
-        eps = torch.randn_like(G_init.ndata["xyz"])
-        eps = utils.zeroed_weighted_com(G_init, eps)
+    def sample_M_randn_like(self, M, mean=None, std=None, return_noise=False):
+        eps = torch.randn_like(M.coords)
+        coords = eps if (mean is None) else (mean + std * eps)
+        coords = torch.nan_to_num(coords)  # FIXME: remove (?)
+        coords = utils.zeroed_com(M, coords, orthogonal=True)
+        M = M.replace(coords=coords)
+        return (M, eps) if return_noise else M
 
-        G = G_init.local_var()
-        if (mean is None) and (std is None):
-            G.ndata["xyz"] = eps
+    def denoised_from_dynamics_out(self, M_t, t, out):
+        t = self.broadcast_scalar(M_t, t)
+        gamma_t = self.gamma(t)
+        sigma_t = self.sigma(gamma_t)
+        alpha_t = self.alpha(gamma_t)
+
+        if self.config.parameterization == "eps":
+            return 1.0 / alpha_t * (M_t.coords - sigma_t * out)
+        elif self.config.parameterization == "x":
+            return out
         else:
-            assert (mean is not None) and (std is not None)
-            G.ndata["xyz"] = mean + (std * eps)
-        
-        # zero out nans
-        if torch.isnan(G.ndata['xyz']).any():
-            print('nan detected in sampling')
-            G.ndata['xyz'] = torch.where(torch.isnan(G.ndata['xyz']), 0.0, G.ndata['xyz'])
-                
-        utils.assert_zeroed_weighted_com(G)
+            raise ValueError()
 
-        return G if not return_noise else (G, eps)
+    def sample_Ms_given_Mt(self, M_t, s, t, w=None):
+        assert torch.all(s < t)
+        s = self.broadcast_scalar(M_t, s)
+        t = self.broadcast_scalar(M_t, t)
 
-    def sample_p_Gs_given_Gt(self, G_t, s, t):
         gamma_s = self.gamma(s)
         gamma_t = self.gamma(t)
 
-        sigma2_t_given_s, sigma_t_given_s, alpha_t_given_s = (
-            self.sigma_and_alpha_t_given_s(gamma_t, gamma_s, broadcast_to=G_t)
-        )
+        sigma2_t_given_s, sigma_t_given_s, alpha_t_given_s = self.sigma_and_alpha_t_given_s(gamma_t, gamma_s)
+        alpha_s = self.alpha(gamma_s)
+        sigma_s = self.sigma(gamma_s)
+        sigma_t = self.sigma(gamma_t)
 
-        sigma_s = self.sigma(gamma_s, broadcast_to=G_t)
-        sigma_t = self.sigma(gamma_t, broadcast_to=G_t)
+        out = self.guided_forward(M=M_t, t=t, w=w)
+        out = self.denoised_from_dynamics_out(M_t=M_t, t=t, out=out)
 
-        eps_t = self.dynamics(G=G_t, t=(t.float() / self.T))
-        mu = (G_t.ndata["xyz"] / alpha_t_given_s) - ((sigma2_t_given_s / alpha_t_given_s / sigma_t) * eps_t)
+        mu = ((alpha_t_given_s * sigma_s.square() * M_t.coords) + (alpha_s * sigma2_t_given_s * out)) / sigma_t.square()
         sigma = sigma_t_given_s * sigma_s / sigma_t
+        return self.sample_M_randn_like(M_t, mean=mu, std=sigma)
 
-        return self.sample_randn_G_like(G_t, mean=mu, std=sigma)
+    def sample_M_given_M0(self, M_0, w=None):
+        zeros = torch.zeros([M_0.batch_size], dtype=torch.int, device=M_0.device)
+        zeros = self.broadcast_scalar(M_0, zeros)
 
-    def sample_p_G_given_G0(self, G_0):
-        zeros = torch.zeros([G_0.batch_size], dtype=torch.int, device=G_0.device)
-        gamma_0 = self.gamma(zeros)
-
-        sigma_0 = self.sigma(gamma_0, broadcast_to=G_0)
-        alpha_0 = self.alpha(gamma_0, broadcast_to=G_0)
-
-        eps = self.dynamics(G_0, t=zeros.float())
-        mu = 1.0 / alpha_0 * (G_0.ndata["xyz"] - sigma_0 * eps)
-        sigma = self.broadcast_scalar(self.SNR(-0.5 * gamma_0), G=G_0)
-
-        return self.sample_randn_G_like(G_0, mean=mu, std=sigma)
+        out = self.guided_forward(M=M_0, t=zeros, w=w)
+        mu = self.denoised_from_dynamics_out(M_t=M_0, t=zeros, out=out)
+        sigma = self.SNR(-0.5 * self.gamma(zeros))
+        return self.sample_M_randn_like(M_0, mean=mu, std=sigma)
 
     @torch.no_grad()
-    def sample_p_G(self, G_init, keep_frames=None):
-        G_T = self.sample_randn_G_like(G_init)
-        utils.assert_zeroed_weighted_com(G_T)
+    def sample(self, M, keep_frames=None, w=None):
+        M = M.replace(coords=torch.zeros_like(M.coords))  # safety, so we don't cheat
+        M_T = self.sample_M_randn_like(M)
+        frames = {self.T: M_T}
 
-        frames = {self.T: G_T}
+        M_t = M_T
+        for step in tqdm.tqdm(reversed(range(0, self.T)), desc="Sampling", leave=False, total=self.T):
+            s = torch.full(size=[M.batch_size], fill_value=step, device=M.device)
+            M_t = self.sample_Ms_given_Mt(M_t=M_t, s=s, t=(s + 1), w=w)
 
-        G_t = G_T
-        for step in tqdm(reversed(range(0, self.T)), desc='Sampling', leave=False, total=self.T):
-            s = torch.full([G_T.batch_size], fill_value=step, device=G_T.device)
-            G_t = self.sample_p_Gs_given_Gt(G_t=G_t, s=s, t=(s + 1))
             if (keep_frames is not None) and (step in keep_frames):
-                frames[step] = G_t
-        G = self.sample_p_G_given_G0(G_t)
-        utils.assert_zeroed_weighted_com(G)  # sanity check
+                frames[step] = M_t.cpu()
 
-        frames[-1] = G
+        M = self.sample_M_given_M0(M_t)
+        utils.assert_zeroed_com(M, M.coords)
+        frames[-1] = M.cpu()
 
-        if keep_frames is None:
-            return G
-        else:
-            return G, frames
+        return M if (keep_frames is None) else (M, frames)
 
-    def mse_error(self, G, input, target, reduction):
-        with G.local_scope():
-            G.ndata["error"] = (input - target).square()
-            if reduction == "sum":
-                error = dgl.sum_nodes(G, "error").sum(dim=-1)
-            elif reduction == "mean":
-                error = dgl.mean_nodes(G, "error").mean(dim=-1)
-            else:
-                raise ValueError()
-        return error
-
-    def simple_losses(self, G):
-        t = torch.randint(0, self.T + 1, size=[G.batch_size], dtype=torch.int, device=G.device)
-
+    def denoising_errors(self, forward_fn, M, t, reduction):
+        t = self.broadcast_scalar(M, t)
         gamma_t = self.gamma(t)
-        alpha_t = self.alpha(gamma_t, broadcast_to=G)
-        sigma_t = self.sigma(gamma_t, broadcast_to=G)
+        alpha_t = self.alpha(gamma_t)
+        sigma_t = self.sigma(gamma_t)
 
-        mu_t = alpha_t * G.ndata["xyz"]
-        G_t, eps_true = self.sample_randn_G_like(G, mean=mu_t, std=sigma_t, return_noise=True)
-        eps_pred = self.dynamics(G=G_t, t=(t.float() / self.T))
+        M_t, eps = self.sample_M_randn_like(M, mean=(alpha_t * M.coords), std=sigma_t, return_noise=True)
+        out = forward_fn(M=M_t, t=t)
 
-        return self.mse_error(G=G_t, input=eps_pred, target=eps_true, reduction="mean")
+        if self.config.parameterization == "eps":
+            errors = (out - eps).square()
+        elif self.config.parameterization == "x":
+            errors = (out - M.coords).square()
+        else:
+            raise ValueError()
 
-    def log_norm_const_p_G_given_G0(self, G):
-        zeros = torch.zeros([G.batch_size], dtype=torch.int, device=G.device)
+        if reduction == "mean":
+            return M.mean_pool(errors).mean(dim=-1)
+        elif reduction == "sum":
+            return M.sum_pool(errors).sum(dim=-1)
+        else:
+            raise ValueError()
+
+    def simple_losses(self, M, puncond=0.0):
+        t = torch.randint(0, self.T + 1, size=[M.batch_size], device=M.device)
+        forward_fn = functools.partial(self.forward, puncond=puncond)
+        return self.denoising_errors(forward_fn, M=M, t=t, reduction="mean")
+
+    def dimensionality(self, M):
+        return (M.num_atoms - 1) * 3  # subspace where atom-weighted center of mass is 0
+
+    def gaussian_KL_qp(self, M, q_mean, q_std, p_mean, p_std):
+        assert q_std.ndim == p_std.ndim == 1
+        d = self.dimensionality(M)
+        mean_sqe_dist = M.sum_pool((q_mean - p_mean).square()).sum(dim=-1)
+        kl_div = (2 * d * torch.log(p_std / q_std)) + ((d * q_std.square() + mean_sqe_dist) / p_std.square()) - d
+        return 0.5 * kl_div
+
+    def log_norm_const_p_M_given_M0(self, M):
+        zeros = torch.zeros([M.batch_size], dtype=torch.int, device=M.device)
         gamma_0 = self.gamma(zeros)
-
-        d = self.dimensionality(G)
+        d = self.dimensionality(M)
         return -0.5 * d * (np.log(2 * np.pi) + gamma_0)
 
-    def prior_matching_loss(self, G):
-        T = torch.full([G.batch_size], fill_value=self.T, device=G.device)
-
+    def prior_matching_loss(self, M):
+        T = torch.full(size=[M.batch_size], fill_value=self.T, device=M.device)
         gamma_T = self.gamma(T)
-        alpha_T = self.alpha(gamma_T, broadcast_to=G)
+        alpha_T = self.broadcast_scalar(M, self.alpha(gamma_T))
 
-        mu_T = alpha_T * G.ndata["xyz"]
-        sigma_T = self.sigma(gamma_T)
-
+        mu_T, sigma_T = (alpha_T * M.coords), self.sigma(gamma_T)
         zeros, ones = torch.zeros_like(mu_T), torch.ones_like(sigma_T)
-        return utils.gaussian_KL_div(G, mu_T, sigma_T, zeros, ones, d=self.dimensionality(G))
+        return self.gaussian_KL_qp(M, mu_T, sigma_T, zeros, ones)
 
-    def nlls(self, G):
-        t = torch.randint(1, self.T + 1, size=[G.batch_size], device=G.device)
-        s = t - 1
+    def nlls(self, M, w=None):
+        forward_fn = functools.partial(self.guided_forward, w=w)
 
-        gamma_s = self.gamma(s)
-        gamma_t = self.gamma(t)
-        alpha_t = self.alpha(gamma_t, broadcast_to=G)
-        sigma_t = self.sigma(gamma_t, broadcast_to=G)
+        t = torch.randint(1, self.T + 1, size=[M.batch_size], device=M.device)
+        SNR_weight = self.SNR(self.gamma(t - 1) - self.gamma(t)) - 1
 
-        mu_t = alpha_t * G.ndata["xyz"]
-        G_t, eps_true = self.sample_randn_G_like(G, mean=mu_t, std=sigma_t, return_noise=True)
-        eps_pred = self.dynamics(G=G_t, t=(t.float() / self.T))
+        loss_prior = self.prior_matching_loss(M)
+        loss_tge0 = 0.5 * SNR_weight * self.denoising_errors(forward_fn, M=M, t=t, reduction="sum")
+        loss_0 = 0.5 * self.denoising_errors(forward_fn, M=M, t=torch.zeros_like(t), reduction="sum")
 
-        SNR_weight = self.SNR(gamma_s - gamma_t) - 1
-        error = self.mse_error(G=G_t, input=eps_pred, target=eps_true, reduction="sum")
-        loss_tge0 = 0.5 * SNR_weight * error
-
-        loss_prior = self.prior_matching_loss(G)
-
-        zeros = torch.zeros_like(s)
-        gamma_0 = self.gamma(zeros)
-        alpha_0 = self.alpha(gamma_0, broadcast_to=G)
-        sigma_0 = self.sigma(gamma_0, broadcast_to=G)
-
-        mu_0 = alpha_0 * G.ndata["xyz"]
-        G_0, eps_true = self.sample_randn_G_like(G, mean=mu_0, std=sigma_0, return_noise=True)
-        eps_pred = self.dynamics(G=G_0, t=zeros.float())
-
-        error = self.mse_error(G=G_0, input=eps_pred, target=eps_true, reduction="sum")
-        loss_0 = 0.5 * error
-
-        return loss_prior + (self.T * loss_tge0) + loss_0 - self.log_norm_const_p_G_given_G0(G)
+        return loss_prior + (self.T * loss_tge0) + loss_0 - self.log_norm_const_p_M_given_M0(M)

@@ -1,12 +1,9 @@
 import torch
 import torch.linalg as LA
 
-from src import chem
 
-
-def rotated_to_principal_axes(coords, atom_nums, return_moments=False):
-    coords = coords.double()
-    m = chem.atom_masses_from_nums(atom_nums).double()
+def rotated_to_principal_axes(coords, masses, return_moments=False):
+    coords, m = coords.double(), masses.double()
 
     # Subtract CoM
     com = torch.sum(m * coords, dim=1, keepdim=True) / m.sum()

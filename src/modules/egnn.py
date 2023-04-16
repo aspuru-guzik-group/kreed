@@ -2,75 +2,105 @@ import dgl.function as fn
 import torch
 import torch.linalg as LA
 import torch.nn as nn
+import torch.nn.functional as F
 
+from src.modules.layers import Activation
 
-# Modified from DGL source code:
-# https://github.com/dmlc/dgl/blob/master/python/dgl/nn/pytorch/conv/egnnconv.py
-# Adapted to implement:
-# https://github.com/ehoogeboom/e3_diffusion_for_molecules/blob/main/egnn/egnn_new.py
-
-from .layernorm import SE3Norm
 
 class EquivariantBlock(nn.Module):
 
+    DISTANCE_FN_REGISTRY = {"dist_l2", "dist_l1", "dist_abs", "dist_cos", "orig_l2", "orig_l1", "orig_abs"}
+
+    @classmethod
+    def distance_features(cls, dim, fns):
+        assert set(fns) <= cls.DISTANCE_FN_REGISTRY
+        increments = {
+            "dist_l2": 1, "dist_l1": 1, "dist_abs": dim, "dist_cos": 1,
+            "orig_l2": 2, "orig_l1": 2, "orig_abs": 2 * dim,
+        }
+        return sum(i for k, i in increments.items() if (k in fns))
+
+    @classmethod
+    def distances(cls, edges, feat, fns, aux=False):
+        srcs = edges.src[feat]
+        dsts = edges.dst[feat]
+        diffs = srcs - dsts
+        radials = LA.norm(diffs, ord=2, dim=-1, keepdim=True)
+
+        D = []
+        if "dist_l2" in fns:
+            D.append(radials)
+        if "dist_l1" in fns:
+            D.append(LA.norm(diffs, ord=1, dim=-1, keepdim=True))
+        if "dist_abs" in fns:
+            D.append(diffs.abs())
+        if "dist_cos" in fns:
+            D.append(F.cosine_similarity(srcs, dsts, dim=-1).unsqueeze(-1))
+        if "orig_l2" in fns:
+            D.append(LA.norm(srcs, ord=2, dim=-1, keepdim=True))
+            D.append(LA.norm(dsts, ord=2, dim=-1, keepdim=True))
+        if "orig_l1" in fns:
+            D.append(LA.norm(srcs, ord=1, dim=-1, keepdim=True))
+            D.append(LA.norm(dsts, ord=1, dim=-1, keepdim=True))
+        if "orig_abs" in fns:
+            D.append(srcs.abs())
+            D.append(dsts.abs())
+        D = torch.cat(D, dim=-1)
+
+        return (D, (diffs, radials)) if aux else D
+
     def __init__(
         self,
-        d_coords, d_hidden, d_edges,
+        dim,
+        hidden_features,
+        edge_features,
+        distance_fns,
+        act,
         update_hidden=True,
-        equivariance="e3",
     ):
-        assert equivariance in {"e3", "reflect"}
         super().__init__()
 
-        self.d_coords = d_coords
-        self.d_hidden = d_hidden
-        self.d_edges = d_edges
+        self.distance_fns = distance_fns
         self.update_hidden = update_hidden
 
-        self.is_e3 = (equivariance == "e3")
-        d_dists = 1 if self.is_e3 else (1 + d_coords)
-        d_msg_f = (2 * d_hidden) + d_edges + d_dists + (0 if self.is_e3 else 2 * d_coords)
+        message_features = (2 * hidden_features) + edge_features + self.distance_features(dim, distance_fns)
 
         if update_hidden:
             self.edge_mlp = nn.Sequential(
-                nn.Linear(d_msg_f, d_hidden),
-                nn.SiLU(),
-                nn.Linear(d_hidden, d_hidden),
-                nn.SiLU(),
+                nn.Linear(message_features, hidden_features),
+                Activation(act),
+                nn.Linear(hidden_features, hidden_features),
+                Activation(act),
             )
 
             self.att_mlp = nn.Sequential(
-                nn.Linear(d_hidden, 1),
+                nn.Linear(hidden_features, 1),
                 nn.Sigmoid(),
             )
 
             self.node_mlp = nn.Sequential(
-                nn.Linear(2 * d_hidden, d_hidden),
-                nn.SiLU(),
-                nn.Linear(d_hidden, d_hidden),
+                nn.Linear(2 * hidden_features, hidden_features),
+                Activation(act),
+                nn.Linear(hidden_features, hidden_features),
             )
 
         self.coord_mlp = nn.Sequential(
-            nn.Linear(d_msg_f, d_hidden),
-            nn.SiLU(),
-            nn.Linear(d_hidden, d_hidden),
-            nn.SiLU(),
-            nn.Linear(d_hidden, 1, bias=False),
+            nn.Linear(message_features, hidden_features),
+            Activation(act),
+            nn.Linear(hidden_features, hidden_features),
+            Activation(act),
+            nn.Linear(hidden_features, 1, bias=False),  # TODO: try dim instead of 1?
         )
-
-        self.e3norm = SE3Norm()
-        self.norm = nn.LayerNorm(d_hidden)
 
         torch.nn.init.xavier_uniform_(self.coord_mlp[-1].weight, gain=0.001)
 
     def message(self, edges):
-        f = [edges.src["h"], edges.dst["h"], edges.data["radial"], edges.data["a"]]
-        if not self.is_e3:
-            f = f + [edges.data["x_diff"].abs(), edges.src["x"].abs(), edges.dst["x"].abs()]
+        D, (diffs, radials) = self.distances(edges, "x", fns=self.distance_fns, aux=True)
+        f = [edges.src["h"], edges.dst["h"], D, edges.data["a"]]
         f = torch.cat(f, dim=-1)
 
         msg = dict()
-        msg["msg_x"] = self.coord_mlp(f) * edges.data["x_diff"]
+        msg["msg_x"] = self.coord_mlp(f) * diffs / (radials + 1.0)
 
         if self.update_hidden:
             msg_h = self.edge_mlp(f)
@@ -78,27 +108,23 @@ class EquivariantBlock(nn.Module):
 
         return msg
 
-    def forward(self, G, h, x, a=None):
+    def forward(self, M, h, coords, a=None):
+        G = M.graph
+
         with G.local_scope():
-            G.ndata["x"] = x  # coordinates
+            G.ndata["x"] = coords  # coordinates
             G.ndata["h"] = h  # hidden feature
             G.edata["a"] = a  # edge features
-
-            # Get coordinate diff & radial features
-            G.apply_edges(fn.u_sub_v("x", "x", "x_diff"))
-            G.edata["radial"] = LA.norm(G.edata["x_diff"], ord=2, dim=-1, keepdim=True)
-
             G.apply_edges(self.message)
 
-            G.update_all(fn.copy_e("msg_x", "m"), fn.sum("m", "x_neigh"))
-            x = x + self.e3norm(G, 'x_neigh')
+            G.update_all(fn.copy_e("msg_x", "m"), fn.sum("m", "x_agg"))
+            coords = coords + G.ndata["x_agg"]
 
             if self.update_hidden:
-                G.update_all(fn.copy_e("msg_h", "m"), fn.sum("m", "h_neigh"))
-                h_neigh = G.ndata["h_neigh"]
-                out_h = self.node_mlp(torch.cat([h, h_neigh], dim=-1))
-                h = self.norm(h + out_h)
+                G.update_all(fn.copy_e("msg_h", "m"), fn.sum("m", "h_agg"))
+                h_agg = torch.cat([h, G.ndata["h_agg"]], dim=-1)
+                h = h + self.node_mlp(h_agg)
             else:
                 h = None
 
-        return h, x
+        return h, coords

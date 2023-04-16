@@ -4,6 +4,7 @@ from typing import List, Optional
 
 import pydantic_cli
 import pytorch_lightning as pl
+import torch
 import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint, ModelSummary
 from pytorch_lightning.loggers import WandbLogger
@@ -12,8 +13,9 @@ from src.datamodule import ConformerDatamodule
 from src.diffusion import EquivariantDDPMConfig, LitEquivariantDDPM
 from src.experimental.ema import EMA
 
-import torch
-torch.set_float32_matmul_precision('medium')
+torch.set_float32_matmul_precision("medium")
+
+
 class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     """Configuration object for training the DDPM."""
 
@@ -21,8 +23,9 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     debug: bool = False
 
     accelerator: str = "gpu"
+    num_nodes: int = 1
     devices: int = 1
-    strategy: Optional[str] = 'auto'
+    strategy: Optional[str] = "auto"
 
     # =================
     # Datamodule Fields
@@ -41,8 +44,9 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
 
     max_epochs: int = 3000
     lr: float = 2e-4
+    wd: float = 0.0
     puncond: float = 0.0
-    p_drop_labels: float = 0.1
+    pdropout_cond: float = 0.1
 
     ema_decay: float = 0.9999
     clip_grad_norm: bool = True
@@ -51,11 +55,10 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     # Sampling Fields
     # ================
 
-    check_samples_every_n_epoch: int = 1
+    check_samples_every_n_epochs: int = 1
     samples_visualize_n_mols: int = 3
     samples_assess_n_batches: int = 1
     samples_render_every_n_frames: int = 5
-    n_eval_samples: int = 100
 
     # ==============
     # Logging Fields
@@ -63,11 +66,11 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
 
     wandb: bool = False
     wandb_entity: Optional[str] = None
-    wandb_run_id: str = "tmp"
+    wandb_run_id: str = None
 
     checkpoint: bool = True
-    checkpoint_dir: str = "checkpoints" # the folder where you keep all your checkpoints
-    checkpoint_train_time_interval: int = 10  # minutes
+    checkpoint_dir: str = "checkpoints"
+    checkpoint_every_n_min: int = 10  # minutes
 
     log_every_n_steps: int = 10
     progress_bar: bool = False
@@ -88,6 +91,10 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
     log_dir = root / "logs"
     log_dir.mkdir(exist_ok=True)
 
+    ckpt_dir = pathlib.Path(cfg.checkpoint_dir)
+    if cfg.wandb_run_id is not None:
+        ckpt_dir = ckpt_dir / cfg.wandb_run_id
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     # Load data
     data = ConformerDatamodule(
@@ -98,32 +105,30 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         num_workers=cfg.num_workers,
         distributed=(cfg.strategy == "ddp"),
         tol=cfg.tol,
-        p_drop_labels=cfg.p_drop_labels
     )
 
     # Initialize and load model
     ddpm = LitEquivariantDDPM(
         config=cfg,
         lr=cfg.lr,
+        wd=cfg.wd,
         puncond=cfg.puncond,
+        pdropout_cond=cfg.pdropout_cond,
         clip_grad_norm=cfg.clip_grad_norm,
-        check_samples_every_n_epoch=cfg.check_samples_every_n_epoch,
+        check_samples_every_n_epochs=cfg.check_samples_every_n_epochs,
         samples_visualize_n_mols=cfg.samples_visualize_n_mols,
         samples_assess_n_batches=cfg.samples_assess_n_batches,
         samples_render_every_n_frames=cfg.samples_render_every_n_frames,
-        n_eval_samples=cfg.n_eval_samples,
         distributed=(cfg.strategy == "ddp"),
     )
 
-    save_dir = pathlib.Path(cfg.checkpoint_dir) / cfg.wandb_run_id
-    save_dir.mkdir(parents=True, exist_ok=True)
     if cfg.wandb:
         project = "train_edm" + ("_debug" if cfg.debug else "")
         logger = WandbLogger(
             project=project,
             entity=cfg.wandb_entity,
             log_model=True,
-            save_dir=save_dir,
+            save_dir=ckpt_dir,
             config=dict(cfg),
             id=cfg.wandb_run_id,
             resume="allow",
@@ -133,33 +138,40 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
 
     callbacks = [
         ModelSummary(max_depth=2),
-        # EMA(decay=cfg.ema_decay, cpu_offload=True),
+        EMA(decay=cfg.ema_decay, cpu_offload=True),
     ]
 
     if cfg.checkpoint:
-        callbacks.append(
+        callbacks.extend([
             ModelCheckpoint(
-                dirpath=save_dir,
+                dirpath=ckpt_dir,
+                filename="epoch={epoch}-val_nll={val/nll:.5f}",
+                auto_insert_metric_name=False,
                 monitor="val/nll",
                 save_top_k=3,
+                verbose=True,
+                every_n_epochs=1,
+            ),
+            ModelCheckpoint(
+                dirpath=ckpt_dir,
+                save_top_k=0,
                 save_last=True,
                 verbose=True,
-                train_time_interval=datetime.timedelta(minutes=cfg.checkpoint_train_time_interval),
-            )
-        )
+                train_time_interval=datetime.timedelta(minutes=cfg.checkpoint_every_n_min),
+            ),
+        ])
 
     if cfg.debug:
         debug_kwargs = {
-            "overfit_batches": 1000,
-            "limit_train_batches": 10000,
-            "limit_val_batches": 0,
-            "limit_test_batches": 0,
+            "limit_train_batches": 10,
+            "limit_val_batches": 10,
         }
     else:
         debug_kwargs = {}
 
     trainer = pl.Trainer(
         accelerator=cfg.accelerator,
+        num_nodes=cfg.num_nodes,
         devices=cfg.devices,
         strategy=cfg.strategy,
         callbacks=callbacks,
@@ -168,11 +180,10 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         max_epochs=cfg.max_epochs,
         log_every_n_steps=cfg.log_every_n_steps,
         enable_progress_bar=cfg.progress_bar,
-        num_sanity_val_steps=0,
         **debug_kwargs,
     )
 
-    ckpt_path = save_dir / "last.ckpt"
+    ckpt_path = ckpt_dir / "last.ckpt"
     ckpt_path = str(ckpt_path) if ckpt_path.exists() else None
     trainer.fit(model=ddpm, datamodule=data, ckpt_path=ckpt_path)
 
