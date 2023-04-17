@@ -29,7 +29,7 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
     cond_features: int = 128
     hidden_features: int = 256
 
-    num_layers: int = 9
+    num_layers: int = 6
     norm_before_blocks: bool = True
     norm_hidden_type: Literal["layer", "instance"] = "layer"
     norm_adaptively: bool = True

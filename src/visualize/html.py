@@ -12,7 +12,7 @@ with open(ROOT / "trajectory_template.html", "r") as f:
 
 
 def html_render_molecule(M):
-    return JS_MOLECULE_TEMPLATE % (M.id, repr(M.xyzfile()))
+    return JS_MOLECULE_TEMPLATE % (M.id_as_int, repr(M.xyzfile()))
 
 
 def html_render_trajectory(Ms):
@@ -22,4 +22,4 @@ def html_render_trajectory(Ms):
     for M in Ms:
         trajfile += M.xyzfile()
     trajfile = Ms[-1].xyzfile() + trajfile  # prepend the last frame so zoomTo works
-    return JS_TRAJECTORY_TEMPLATE % (Ms[0].id, repr(trajfile))
+    return JS_TRAJECTORY_TEMPLATE % (Ms[0].id_as_int, repr(trajfile))

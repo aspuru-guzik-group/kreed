@@ -109,3 +109,8 @@ class Molecule(_Molecule):
 
     def replace(self, **kwargs):
         return self._replace(**kwargs)
+
+    @property
+    def id_as_int(self):
+        assert not self.batched
+        return int(self.id[0][0])
