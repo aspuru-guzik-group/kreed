@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from src import utils
-from src.modules import Activation, EquivariantBlock, LayerNorm
+from src.modules import Activation, EquivariantBlock, LayerNorm, SE3Norm
 
 
 class DummyDynamics(nn.Module):
@@ -68,6 +68,7 @@ class EquivariantDynamics(nn.Module):
             blocks = {}
 
             if norm_before_blocks:
+                blocks["norm_coords"] = SE3Norm(adaptive_features)
                 blocks["norm_hidden"] = LayerNorm(hidden_features, adaptive_features)
 
             blocks["equivariant"] = EquivariantBlock(
@@ -110,6 +111,7 @@ class EquivariantDynamics(nn.Module):
 
         for i, blocks in enumerate(self.egnn):
             if self.norm_before_blocks:
+                coords = blocks["norm_coords"](M=M, coords=coords, y=cond)
                 h = blocks["norm_hidden"](M=M, h=h, y=cond)
             h, coords = blocks["equivariant"](M=M, h=h, coords=coords, a=a)
 
