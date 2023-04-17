@@ -36,13 +36,13 @@ class SE3Norm(nn.Module):
             self.weight = nn.Parameter(torch.zeros([1], dtype=torch.float))
 
     def forward(self, M, coords, y):
-        norms = torch.norm(coords, dim=-1, keepdim=True)
-        mean_norm = M.mean_pool(norms, broadcast=True)
+        norms2 = coords.square().sum(dim=-1)
+        rms_norm = M.mean_pool(norms2, broadcast=True).sqrt()
         if self.adaptive:
             scale = self.proj_ada(y)
         else:
             scale = self.weight
-        return (1 + scale) * coords / (mean_norm + self.eps)
+        return (1 + scale) * coords / (rms_norm + self.eps)
 
     def extra_repr(self):
         return f"{self.adaptive =} {self.eps =} {self.elementwise_affine =}"
