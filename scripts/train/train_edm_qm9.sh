@@ -11,8 +11,8 @@
 #SBATCH --output=logs/slurm-%j.out
 
 # Environment variables
-export LD_LIBRARY_PATH=/pkgs/cuda-11.6/lib64:/pkgs/cudnn-11.7-v8.5.0.96/lib64:$LD_LIBRARY_PATH
-export CUDA_PATH=/pkgs/cuda-11.6/
+export LD_LIBRARY_PATH=/pkgs/cuda-11.8/lib64:/pkgs/cudnn-11.7-v8.5.0.96/lib64:$LD_LIBRARY_PATH
+export CUDA_PATH=/pkgs/cuda-11.8/
 export CUDNN_PATH=/pkgs/cudnn-11.7-v8.5.0.96/
 
 # Conda
