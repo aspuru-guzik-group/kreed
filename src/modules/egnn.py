@@ -4,7 +4,9 @@ import torch.linalg as LA
 import torch.nn as nn
 import torch.nn.functional as F
 
+from src import utils
 from src.modules.layers import Activation
+from src.modules.normalizations import LayerNorm, SE3Norm
 
 
 class EquivariantBlock(nn.Module):
@@ -54,16 +56,34 @@ class EquivariantBlock(nn.Module):
         dim,
         hidden_features,
         edge_features,
+        adaptive_features,
         distance_fns,
         act,
+        norm_coords_type,
+        norm_hidden_type,
+        post_zero_com,
         update_hidden=True,
     ):
         super().__init__()
 
         self.distance_fns = distance_fns
+        self.post_zero_com = post_zero_com
         self.update_hidden = update_hidden
 
         message_features = (2 * hidden_features) + edge_features + self.distance_features(dim, distance_fns)
+
+        if norm_coords_type == "se3":
+            self.norm_coords = SE3Norm(adaptive_features)
+        else:
+            self.norm_coords = None
+
+        if norm_hidden_type == "layer":
+            self.norm_h = LayerNorm(hidden_features, adaptive_features)
+            self.norm_h_agg = LayerNorm(2 * hidden_features, adaptive_features)
+        elif norm_hidden_type == "none":
+            self.norm_h = self.norm_h_agg = None
+        else:
+            raise ValueError()
 
         if update_hidden:
             self.edge_mlp = nn.Sequential(
@@ -108,23 +128,29 @@ class EquivariantBlock(nn.Module):
 
         return msg
 
-    def forward(self, M, h, coords, a=None):
+    def forward(self, M, h, coords, a=None, y=None):
         G = M.graph
 
         with G.local_scope():
-            G.ndata["x"] = coords  # coordinates
-            G.ndata["h"] = h  # hidden feature
-            G.edata["a"] = a  # edge features
+            G.ndata["x"] = coords
+            G.ndata["h"] = h if (self.norm_h is None) else self.norm_h(M, h=h, y=y)
+            G.edata["a"] = a
             G.apply_edges(self.message)
 
             G.update_all(fn.copy_e("msg_x", "m"), fn.sum("m", "x_agg"))
-            coords = coords + G.ndata["x_agg"]
+            x_agg = G.ndata["x_agg"]
+            x_agg = x_agg if (self.norm_coords is None) else self.norm_coords(M, coords=x_agg, y=y)
+            coords = coords + x_agg
 
             if self.update_hidden:
                 G.update_all(fn.copy_e("msg_h", "m"), fn.sum("m", "h_agg"))
                 h_agg = torch.cat([h, G.ndata["h_agg"]], dim=-1)
+                h_agg = h_agg if (self.norm_h_agg is None) else self.norm_h_agg(M, h=h_agg, y=y)
                 h = h + self.node_mlp(h_agg)
             else:
                 h = None
+
+        if self.post_zero_com:
+            coords = utils.zeroed_com(M, coords, orthogonal=False)
 
         return h, coords

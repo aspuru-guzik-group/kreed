@@ -27,7 +27,6 @@ class EquivariantDynamics(nn.Module):
         cond_features,
         hidden_features,
         num_layers,
-        norm_before_blocks,
         norm_hidden_type,
         norm_adaptively,
         zero_com_after_blocks,
@@ -40,7 +39,6 @@ class EquivariantDynamics(nn.Module):
 
         self.egnn_distance_fns = egnn_distance_fns
         self.num_layers = num_layers
-        self.norm_before_blocks = norm_before_blocks
         self.norm_adaptively = norm_adaptively
         self.zero_com_after_blocks = zero_com_after_blocks
 
@@ -49,8 +47,7 @@ class EquivariantDynamics(nn.Module):
         nf = atom_features + temb_features + 1 + 1 + 3 + 3 + 3
         self.proj_h = nn.Linear(nf, hidden_features)
 
-        if norm_adaptively:
-            assert norm_before_blocks
+        if norm_adaptively and ({"none"} != {norm_hidden_type, norm_coords_type}):
             adaptive_features = cond_features
             self.proj_cond = nn.Sequential(
                 nn.Linear(nf, cond_features),
@@ -62,25 +59,21 @@ class EquivariantDynamics(nn.Module):
             adaptive_features = -1
             self.proj_cond = None
 
-        self.egnn = nn.ModuleList()
-
-        for i in range(num_layers):
-            blocks = {}
-
-            if norm_before_blocks:
-                blocks["norm_coords"] = SE3Norm(adaptive_features)
-                blocks["norm_hidden"] = LayerNorm(hidden_features, adaptive_features)
-
-            blocks["equivariant"] = EquivariantBlock(
+        self.egnn = nn.ModuleList([
+            EquivariantBlock(
                 dim=3,
                 hidden_features=hidden_features,
                 edge_features=EquivariantBlock.distance_features(3, egnn_distance_fns),
+                adaptive_features=adaptive_features,
                 distance_fns=egnn_distance_fns,
                 act=act,
+                norm_coords_type=norm_coords_type,
+                norm_hidden_type=norm_hidden_type,
+                post_zero_com=zero_com_after_blocks,
                 update_hidden=(i + 1 < num_layers),
             )
-
-            self.egnn.append(nn.ModuleDict(blocks))
+            for i in range(num_layers)
+        ])
 
     def forward(self, M, temb):
         assert temb.ndim == 2
@@ -90,13 +83,9 @@ class EquivariantDynamics(nn.Module):
         f = [aemb, temb, M.masses / 12.0, M.masses_normalized, M.cond_labels, M.cond_mask.float(), M.moments]
         f = torch.cat(f, dim=-1)
 
-        if self.proj_cond is None:
-            cond = None
-        else:
-            cond = self.proj_cond(f)
-
         h = self.proj_h(f)
         coords = M.coords
+        cond = None if (self.proj_cond is None) else self.proj_cond(f)
 
         # Get base edge features
         with torch.no_grad():
@@ -109,13 +98,7 @@ class EquivariantDynamics(nn.Module):
             M.graph.ndata.pop("x")
             a = M.graph.edata.pop("a")
 
-        for i, blocks in enumerate(self.egnn):
-            if self.norm_before_blocks:
-                coords = blocks["norm_coords"](M=M, coords=coords, y=cond)
-                h = blocks["norm_hidden"](M=M, h=h, y=cond)
-            h, coords = blocks["equivariant"](M=M, h=h, coords=coords, a=a)
-
-            if self.zero_com_after_blocks:
-                coords = utils.zeroed_com(M, coords, orthogonal=False)
+        for i, block in enumerate(self.egnn):
+            h, coords = block(M=M, h=h, coords=coords, a=a, y=cond)
 
         return coords

@@ -19,6 +19,7 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
     # ============
     # Model Fields
     # ============
+    # (*) The following will impact equivariance
 
     architecture: Literal["dummy", "edm"] = "edm"
     parameterization: Literal["eps", "x"] = "eps"
@@ -30,16 +31,13 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
     hidden_features: int = 256
 
     num_layers: int = 6
-    norm_before_blocks: bool = True
-    norm_hidden_type: Literal["layer", "instance"] = "layer"
+    norm_coords_type: Literal["se3", "none"] = "se3"  # (*)
+    norm_hidden_type: Literal["layer", "none"] = "layer"
     norm_adaptively: bool = True
     zero_com_after_blocks: bool = True
 
+    egnn_distance_fns: List[str] = sorted(EquivariantBlock.DISTANCE_FN_REGISTRY)  # (*)
     act: Literal["silu", "gelu"] = "silu"
-
-    # The following will impact equivariance
-    egnn_distance_fns: List[str] = sorted(EquivariantBlock.DISTANCE_FN_REGISTRY)
-    norm_coords_type: Literal["se3", "ref"] = "se3"
 
     # ===============
     # Sampling Fields
