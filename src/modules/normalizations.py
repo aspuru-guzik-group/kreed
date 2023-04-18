@@ -36,7 +36,7 @@ class SE3Norm(nn.Module):
             self.weight = nn.Parameter(torch.zeros([1], dtype=torch.float))
 
     def forward(self, M, coords, y):
-        norms2 = coords.square().sum(dim=-1)
+        norms2 = coords.square().sum(dim=-1, keepdim=True)
         rms_norm = M.mean_pool(norms2, broadcast=True).sqrt()
         if self.adaptive:
             scale = self.proj_ada(y)
