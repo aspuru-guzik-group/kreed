@@ -37,12 +37,12 @@ class SE3Norm(nn.Module):
 
     def forward(self, M, coords, y):
         norms2 = coords.square().sum(dim=-1, keepdim=True)
-        rms_norm = M.mean_pool(norms2, broadcast=True).sqrt()
+        rms_norm = (M.mean_pool(norms2, broadcast=True) + self.eps).sqrt()
         if self.adaptive:
             scale = self.proj_ada(y)
         else:
             scale = self.weight
-        return (1 + scale) * coords / (rms_norm + self.eps)
+        return (1 + scale) * coords / rms_norm
 
     def extra_repr(self):
         return f"{self.adaptive =} {self.eps =} {self.elementwise_affine =}"
