@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from src import utils
-from src.modules import Activation, EquivariantBlock, LayerNorm, SE3Norm
+from src.modules import Activation, EquivariantBlock
 
 
 class DummyDynamics(nn.Module):
@@ -27,27 +27,28 @@ class EquivariantDynamics(nn.Module):
         cond_features,
         hidden_features,
         num_layers,
-        norm_hidden_type,
+        norm_type,
         norm_adaptively,
-        zero_com_after_blocks,
         act,
-        egnn_distance_fns,
-        norm_coords_type,
+        egnn_equivariance,
+        egnn_relaxed,
+        zero_com_before_blocks,
         **kwargs
     ):
         super().__init__()
 
-        self.egnn_distance_fns = egnn_distance_fns
+        self.equivariance = egnn_equivariance
+        self.relaxed = egnn_relaxed
         self.num_layers = num_layers
         self.norm_adaptively = norm_adaptively
-        self.zero_com_after_blocks = zero_com_after_blocks
+        self.zero_com_before_blocks = zero_com_before_blocks
 
         # atom emb + time emb + mass + mass_normalized + cond_coords + cond_mask + moments
         self.embed_atom = nn.Embedding(82, atom_features)  # kind of wasteful but makes code simpler
         nf = atom_features + temb_features + 1 + 1 + 3 + 3 + 3
         self.proj_h = nn.Linear(nf, hidden_features)
 
-        if norm_adaptively and ({"none"} != {norm_hidden_type, norm_coords_type}):
+        if norm_adaptively and (norm_type != "none"):
             adaptive_features = cond_features
             self.proj_cond = nn.Sequential(
                 nn.Linear(nf, cond_features),
@@ -61,15 +62,14 @@ class EquivariantDynamics(nn.Module):
 
         self.egnn = nn.ModuleList([
             EquivariantBlock(
+                equivariance=egnn_equivariance,
+                relaxed=egnn_relaxed,
                 dim=3,
                 hidden_features=hidden_features,
-                edge_features=EquivariantBlock.distance_features(3, egnn_distance_fns),
+                edge_features=EquivariantBlock.distance_features(3, egnn_equivariance, egnn_relaxed),
                 adaptive_features=adaptive_features,
-                distance_fns=egnn_distance_fns,
+                norm=norm_type,
                 act=act,
-                norm_coords_type=norm_coords_type,
-                norm_hidden_type=norm_hidden_type,
-                post_zero_com=zero_com_after_blocks,
                 update_hidden=(i + 1 < num_layers),
             )
             for i in range(num_layers)
@@ -80,7 +80,7 @@ class EquivariantDynamics(nn.Module):
         utils.assert_zeroed_com(M, M.coords)
 
         aemb = self.embed_atom(M.atom_nums.squeeze(-1))
-        f = [aemb, temb, M.masses / 12.0, M.masses_normalized, M.cond_labels, M.cond_mask.float(), M.moments]
+        f = [aemb, temb, M.masses, M.masses_normalized, M.cond_labels, M.cond_mask.float(), M.moments]
         f = torch.cat(f, dim=-1)
 
         h = self.proj_h(f)
@@ -92,13 +92,15 @@ class EquivariantDynamics(nn.Module):
             M.graph.ndata["x"] = coords
             M.graph.apply_edges(
                 lambda edges: {
-                    "a": EquivariantBlock.distances(edges, "x", fns=self.egnn_distance_fns)
+                    "a": EquivariantBlock.distances(edges, "x", self.equivariance, self.relaxed)
                 }
             )
             M.graph.ndata.pop("x")
             a = M.graph.edata.pop("a")
 
         for i, block in enumerate(self.egnn):
+            if self.zero_com_before_blocks:
+                coords = utils.zeroed_com(M, coords, orthogonal=False)
             h, coords = block(M=M, h=h, coords=coords, a=a, y=cond)
 
-        return coords
+        return utils.zeroed_com(M, coords, orthogonal=False)

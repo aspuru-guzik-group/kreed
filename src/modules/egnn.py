@@ -1,86 +1,78 @@
 import dgl.function as fn
 import torch
-import torch.linalg as LA
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src import utils
 from src.modules.layers import Activation
-from src.modules.normalizations import LayerNorm, SE3Norm
+from src.modules.normalizations import GraphNorm, LayerNorm
 
 
 class EquivariantBlock(nn.Module):
 
-    DISTANCE_FN_REGISTRY = {"dist_l2", "dist_l1", "dist_abs", "dist_cos", "orig_l2", "orig_l1", "orig_abs"}
+    @classmethod
+    def distance_features(cls, dim, equivariance, relaxed):
+        assert equivariance in {"e3", "ref"}
+        features = 1 + (3 if relaxed else 0)
+        if equivariance == "ref":
+            features += (dim * (3 if relaxed else 1))
+        return features
 
     @classmethod
-    def distance_features(cls, dim, fns):
-        assert set(fns) <= cls.DISTANCE_FN_REGISTRY
-        increments = {
-            "dist_l2": 1, "dist_l1": 1, "dist_abs": dim, "dist_cos": 1,
-            "orig_l2": 2, "orig_l1": 2, "orig_abs": 2 * dim,
-        }
-        return sum(i for k, i in increments.items() if (k in fns))
-
-    @classmethod
-    def distances(cls, edges, feat, fns, aux=False):
+    def distances(cls, edges, feat, equivariance, relaxed, aux=False):
+        assert equivariance in {"e3", "ref"}
         srcs = edges.src[feat]
         dsts = edges.dst[feat]
         diffs = srcs - dsts
-        radials = LA.norm(diffs, ord=2, dim=-1, keepdim=True)
 
-        D = []
-        if "dist_l2" in fns:
-            D.append(radials)
-        if "dist_l1" in fns:
-            D.append(LA.norm(diffs, ord=1, dim=-1, keepdim=True))
-        if "dist_abs" in fns:
-            D.append(diffs.abs())
-        if "dist_cos" in fns:
-            D.append(F.cosine_similarity(srcs, dsts, dim=-1).unsqueeze(-1))
-        if "orig_l2" in fns:
-            D.append(LA.norm(srcs, ord=2, dim=-1, keepdim=True))
-            D.append(LA.norm(dsts, ord=2, dim=-1, keepdim=True))
-        if "orig_l1" in fns:
-            D.append(LA.norm(srcs, ord=1, dim=-1, keepdim=True))
-            D.append(LA.norm(dsts, ord=1, dim=-1, keepdim=True))
-        if "orig_abs" in fns:
-            D.append(srcs.abs())
-            D.append(dsts.abs())
+        diffs2 = diffs.square()
+        radials = diffs2.sum(dim=-1, keepdim=True)
+
+        D = [radials]
+        if equivariance == "ref":
+            D.append(diffs2)
+        if relaxed:
+            srcs2 = srcs.square()
+            dsts2 = dsts.square()
+            D.extend([
+                srcs2.sum(dim=-1, keepdim=True),
+                dsts2.sum(dim=-1, keepdim=True),
+                F.cosine_similarity(srcs, dsts, dim=-1).unsqueeze(-1),
+            ])
+            if equivariance == "ref":
+                D.extend([srcs2, dsts2])
         D = torch.cat(D, dim=-1)
 
         return (D, (diffs, radials)) if aux else D
 
     def __init__(
         self,
+        equivariance,
+        relaxed,
         dim,
         hidden_features,
         edge_features,
         adaptive_features,
-        distance_fns,
+        norm,
         act,
-        norm_coords_type,
-        norm_hidden_type,
-        post_zero_com,
         update_hidden=True,
     ):
+        assert equivariance in {"e3", "ref"}
         super().__init__()
 
-        self.distance_fns = distance_fns
-        self.post_zero_com = post_zero_com
+        self.equivariance = equivariance
+        self.relaxed = relaxed
         self.update_hidden = update_hidden
 
-        message_features = (2 * hidden_features) + edge_features + self.distance_features(dim, distance_fns)
+        message_features = (2 * hidden_features) + edge_features
+        message_features += self.distance_features(dim, equivariance, relaxed)
 
-        if norm_coords_type == "se3":
-            self.norm_coords = SE3Norm(adaptive_features)
-        else:
-            self.norm_coords = None
-
-        if norm_hidden_type == "layer":
+        if norm == "layer":
             self.norm_h = LayerNorm(hidden_features, adaptive_features)
-            self.norm_h_agg = LayerNorm(2 * hidden_features, adaptive_features)
-        elif norm_hidden_type == "none":
+            self.norm_h_agg = LayerNorm(hidden_features, adaptive_features)
+        elif norm == "graph":
+            self.norm_h = GraphNorm(hidden_features, adaptive_features)
+            self.norm_h_agg = GraphNorm(hidden_features, adaptive_features)
+        elif norm == "none":
             self.norm_h = self.norm_h_agg = None
         else:
             raise ValueError()
@@ -104,23 +96,24 @@ class EquivariantBlock(nn.Module):
                 nn.Linear(hidden_features, hidden_features),
             )
 
+        scale_dim = 1 if (equivariance == "e3") else dim
         self.coord_mlp = nn.Sequential(
             nn.Linear(message_features, hidden_features),
             Activation(act),
             nn.Linear(hidden_features, hidden_features),
             Activation(act),
-            nn.Linear(hidden_features, 1, bias=False),  # TODO: try dim instead of 1?
+            nn.Linear(hidden_features, scale_dim, bias=False),
         )
 
         torch.nn.init.xavier_uniform_(self.coord_mlp[-1].weight, gain=0.001)
 
     def message(self, edges):
-        D, (diffs, radials) = self.distances(edges, "x", fns=self.distance_fns, aux=True)
+        D, (diffs, radials) = self.distances(edges, "x", self.equivariance, self.relaxed, aux=True)
         f = [edges.src["h"], edges.dst["h"], D, edges.data["a"]]
         f = torch.cat(f, dim=-1)
 
         msg = dict()
-        msg["msg_x"] = self.coord_mlp(f) * diffs / (radials + 1.0)
+        msg["msg_x"] = self.coord_mlp(f) * diffs / (radials.sqrt() + 1.0)
 
         if self.update_hidden:
             msg_h = self.edge_mlp(f)
@@ -138,19 +131,14 @@ class EquivariantBlock(nn.Module):
             G.apply_edges(self.message)
 
             G.update_all(fn.copy_e("msg_x", "m"), fn.sum("m", "x_agg"))
-            x_agg = G.ndata["x_agg"]
-            x_agg = x_agg if (self.norm_coords is None) else self.norm_coords(M, coords=x_agg, y=y)
-            coords = coords + x_agg
+            coords = coords + G.ndata["x_agg"]
 
             if self.update_hidden:
                 G.update_all(fn.copy_e("msg_h", "m"), fn.sum("m", "h_agg"))
-                h_agg = torch.cat([h, G.ndata["h_agg"]], dim=-1)
+                h_agg = G.ndata["h_agg"]
                 h_agg = h_agg if (self.norm_h_agg is None) else self.norm_h_agg(M, h=h_agg, y=y)
-                h = h + self.node_mlp(h_agg)
+                h = h + self.node_mlp(torch.cat([G.ndata["h"], h_agg], dim=-1))
             else:
                 h = None
-
-        if self.post_zero_com:
-            coords = utils.zeroed_com(M, coords, orthogonal=False)
 
         return h, coords

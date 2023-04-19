@@ -19,7 +19,6 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
     # ============
     # Model Fields
     # ============
-    # (*) The following will impact equivariance
 
     architecture: Literal["dummy", "edm"] = "edm"
     parameterization: Literal["eps", "x"] = "eps"
@@ -31,13 +30,13 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
     hidden_features: int = 256
 
     num_layers: int = 6
-    norm_coords_type: Literal["se3", "none"] = "se3"  # (*)
-    norm_hidden_type: Literal["layer", "none"] = "layer"
+    norm_type: Literal["layer", "graph", "none"] = "graph"
     norm_adaptively: bool = True
-    zero_com_after_blocks: bool = True
-
-    egnn_distance_fns: List[str] = sorted(EquivariantBlock.DISTANCE_FN_REGISTRY)  # (*)
     act: Literal["silu", "gelu"] = "silu"
+
+    egnn_equivariance: Literal["e3", "ref"] = "ref"
+    egnn_relaxed: bool = True
+    zero_com_before_blocks: bool = True
 
     # ===============
     # Sampling Fields
@@ -102,9 +101,9 @@ class EquivariantDDPM(nn.Module):
         out = self.dynamics(M=M, temb=temb)
 
         if cfg.parameterization == "eps":
-            out = out - M.coords
-
-        return utils.zeroed_com(M, out, orthogonal=False)
+            return out - M.coords
+        else:
+            return out
 
     def guided_forward(self, M, t, w=None):
         w = self.config.guidance_strength if (w is None) else w
