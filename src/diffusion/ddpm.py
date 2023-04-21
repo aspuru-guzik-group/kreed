@@ -194,7 +194,7 @@ class EquivariantDDPM(nn.Module):
             M_t = self.sample_Ms_given_Mt(M_t=M_t, s=s, t=(s + 1), w=w)
 
             if not torch.isfinite(M_t.coords).all():
-                print("NaNs, detected. Setting to 0")
+                print("(!!!) NaNs detected, setting samples to 0.")
                 M_t.replace(coords=torch.zeros_like(M_t.coords))
             if (keep_frames is not None) and (step in keep_frames):
                 frames[step] = M_t.cpu()
