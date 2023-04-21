@@ -105,7 +105,11 @@ class LitEquivariantDDPM(pl.LightningModule):
             M = M.replace(cond_mask=cond_mask, cond_labels=torch.where(cond_mask, M.cond_labels, 0.0))
 
         # Visualize and assess some samples
-        if (self.current_epoch % hp.check_samples_every_n_epochs == 0) and (batch_idx < hp.samples_assess_n_batches):
+        if (
+            (self.current_epoch > 0)  # don't bother sampling before training
+            and (self.current_epoch % hp.check_samples_every_n_epochs == 0)
+            and (batch_idx < hp.samples_assess_n_batches)
+        ):
             n = hp.samples_visualize_n_mols if (batch_idx == 0) else 0
             self._assess_and_visualize_samples(M=M, split=split, n_visualize=n)
 
@@ -115,7 +119,7 @@ class LitEquivariantDDPM(pl.LightningModule):
             self.log(f"{split}/loss", loss, batch_size=M.batch_size)
         else:
             loss = self.edm.nlls(M).mean()
-            self.log(f"{split}/nll", loss, batch_size=M.batch_size)
+            self.log(f"{split}/nll", loss, batch_size=M.batch_size, sync_dist=hp.distributed)
 
         return loss
 

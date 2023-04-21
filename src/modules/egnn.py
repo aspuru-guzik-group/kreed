@@ -66,12 +66,13 @@ class EquivariantBlock(nn.Module):
         message_features = (2 * hidden_features) + edge_features
         message_features += self.distance_features(dim, equivariance, relaxed)
 
+        # FIXME: can simplify logic here
         if norm == "layer":
             self.norm_h = LayerNorm(hidden_features, adaptive_features)
-            self.norm_h_agg = LayerNorm(hidden_features, adaptive_features)
+            self.norm_h_agg = LayerNorm(hidden_features, adaptive_features) if update_hidden else None
         elif norm == "graph":
             self.norm_h = GraphNorm(hidden_features, adaptive_features)
-            self.norm_h_agg = GraphNorm(hidden_features, adaptive_features)
+            self.norm_h_agg = GraphNorm(hidden_features, adaptive_features) if update_hidden else None
         elif norm == "none":
             self.norm_h = self.norm_h_agg = None
         else:

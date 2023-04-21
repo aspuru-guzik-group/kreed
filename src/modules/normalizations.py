@@ -7,7 +7,7 @@ class GraphNorm(nn.Module):
     def __init__(self, hidden_features, adaptive_features):
         super().__init__()
 
-        self.adaptive = adaptive_features > 0
+        self.adaptive = (adaptive_features > 0)
         self.alpha = nn.Parameter(torch.ones(hidden_features))
         if self.adaptive:
             self.proj_ada = nn.Linear(adaptive_features, 2 * hidden_features) if self.adaptive else None

@@ -6,7 +6,7 @@ import pydantic_cli
 import pytorch_lightning as pl
 import torch
 import wandb
-from pytorch_lightning.callbacks import ModelCheckpoint, ModelSummary
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint, ModelSummary
 from pytorch_lightning.loggers import WandbLogger
 
 from src.datamodule import ConformerDatamodule
@@ -42,8 +42,8 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     # Training Fields
     # ===============
 
-    max_epochs: int = 3000
-    lr: float = 2e-4
+    max_epochs: int = 24000
+    lr: float = 4e-4
     wd: float = 0.001
     puncond: float = 0.0
     pdropout_cond: float = 0.1
@@ -138,6 +138,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
 
     callbacks = [
         ModelSummary(max_depth=2),
+        LearningRateMonitor(),
         EMA(decay=cfg.ema_decay, cpu_offload=True),
     ]
 
