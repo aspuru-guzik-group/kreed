@@ -137,9 +137,11 @@ class EquivariantDDPM(nn.Module):
         eps = torch.randn_like(M.coords)
         coords = eps if (mean is None) else (mean + std * eps)
         coords = utils.zeroed_com(M, coords, orthogonal=True)
+
         if not torch.isfinite(coords).all():
             print("(!!!) NaNs detected, setting to 0.")
             coords = torch.zeros_like(coords)
+
         M = M.replace(coords=coords)
         return (M, eps) if return_noise else M
 
