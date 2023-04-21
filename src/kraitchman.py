@@ -6,7 +6,7 @@ def rotated_to_principal_axes(coords, masses, return_moments=True):
     coords, m = coords.double(), masses.double()
 
     # Subtract CoM
-    com = torch.sum(m * coords, dim=1, keepdim=True) / m.sum()
+    com = torch.sum(m * coords, dim=0) / m.sum()
     coords = coords - com
 
     # Compute planar dyadic
