@@ -113,7 +113,7 @@ class EquivariantBlock(nn.Module):
         f = torch.cat(f, dim=-1)
 
         msg = dict()
-        msg["msg_x"] = self.coord_mlp(f) * diffs / (radials.sqrt() + 1.0)
+        msg["msg_x"] = self.coord_mlp(f) * diffs / (radials + 1.0)
 
         if self.update_hidden:
             msg_h = self.edge_mlp(f)
