@@ -136,7 +136,6 @@ class EquivariantDDPM(nn.Module):
     def sample_M_randn_like(self, M, mean=None, std=None, return_noise=False):
         eps = torch.randn_like(M.coords)
         coords = eps if (mean is None) else (mean + std * eps)
-        coords = torch.nan_to_num(coords)  # FIXME: remove (?)
         coords = utils.zeroed_com(M, coords, orthogonal=True)
         M = M.replace(coords=coords)
         return (M, eps) if return_noise else M
@@ -194,6 +193,9 @@ class EquivariantDDPM(nn.Module):
             s = torch.full(size=[M.batch_size], fill_value=step, device=M.device)
             M_t = self.sample_Ms_given_Mt(M_t=M_t, s=s, t=(s + 1), w=w)
 
+            if not torch.isfinite(M_t.coords).all():
+                print("NaNs, detected. Setting to 0")
+                M_t.replace(coords=torch.zeros_like(M_t.coords))
             if (keep_frames is not None) and (step in keep_frames):
                 frames[step] = M_t.cpu()
 

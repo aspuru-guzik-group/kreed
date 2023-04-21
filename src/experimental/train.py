@@ -180,7 +180,6 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         max_epochs=cfg.max_epochs,
         log_every_n_steps=cfg.log_every_n_steps,
         enable_progress_bar=cfg.progress_bar,
-        num_sanity_val_steps=0,  # model samples can explode before training
         **debug_kwargs,
     )
 
