@@ -1,5 +1,5 @@
 import functools
-from typing import List, Literal
+from typing import Literal
 
 import numpy as np
 import pydantic
@@ -10,7 +10,7 @@ import tqdm
 
 from src import utils
 from src.diffusion.dynamics import DummyDynamics, EquivariantDynamics
-from src.modules import EquivariantBlock, NoiseSchedule, PositionalEmbedding
+from src.modules import NoiseSchedule, PositionalEmbedding
 
 
 class EquivariantDDPMConfig(pydantic.BaseModel):
