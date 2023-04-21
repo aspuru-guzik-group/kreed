@@ -1,76 +1,89 @@
+import itertools
+
+import einops
+import scipy
 import torch
+import torch.nn.functional as F
 
-FLIPS = [
-    torch.tensor([-1, -1, -1]),
-    torch.tensor([-1, -1, 1]),
-    torch.tensor([-1, 1, -1]),
-    torch.tensor([-1, 1, 1]),
-    torch.tensor([1, -1, -1]),
-    torch.tensor([1, -1, 1]),
-    torch.tensor([1, 1, -1]),
-    torch.tensor([1, 1, 1]),
-]
+from src import kraitchman
 
 
-def get_greedy_mapping(atom_nums, xyz_pred, xyz_true):
-    N = xyz_pred.shape[0]
-    mapping = []
-    mapped = torch.ones_like(atom_nums)
-    BIG = 100
-    for i in range(N):
-        dists = torch.norm(xyz_pred[i] - xyz_true, dim=1)
-        different_type = torch.where(atom_nums[i] != atom_nums, BIG, 1)
-
-        # sort dists and get the index of the closest atom
-        idxs_by_dist = torch.argsort(dists * different_type * mapped)
-        idx = idxs_by_dist[0]
-        mapping.append(idx.item())
-        mapped[idx] = BIG
-    return mapping
+# ================================================================================================ #
+#                                              Caches                                              #
+# ================================================================================================ #
 
 
-def align_and_rmsd(atom_nums, xyz_pred, xyz_true):
-    min_heavy_rmsd = 1000000
-    best_flip = FLIPS[-1]
+def _build_transforms_cache():
+    transforms = []
+    for flips in itertools.product([-1, 1], repeat=3):
+        transforms.append(torch.diag_embed(torch.tensor(flips, dtype=torch.float)))
+    return torch.stack(transforms, dim=0)
 
-    for flip in FLIPS:
-        heavy = (atom_nums != 1)
-        heavy_xyz_pred = (xyz_pred * flip)[heavy]
-        heavy_xyz_true = xyz_true[heavy]
-        heavy_atom_nums = atom_nums[heavy]
 
-        mapping = get_greedy_mapping(heavy_atom_nums, heavy_xyz_pred, heavy_xyz_true)
-        heavy_rmsd = (heavy_xyz_pred - heavy_xyz_true[mapping]).square().mean().sqrt()
+TRANSFORMS = _build_transforms_cache()
 
-        if heavy_rmsd < min_heavy_rmsd:
-            min_heavy_rmsd = heavy_rmsd
-            best_flip = flip
 
-    return min_heavy_rmsd, best_flip
+# ================================================================================================ #
+#                                             Metrics                                              #
+# ================================================================================================ #
+
+
+def coord_rmse(M_pred, M_true):
+    atom_nums = M_pred.atom_nums  # (N 1)
+    coords_pred = kraitchman.rotated_to_principal_axes(M_pred.coords, M_pred.masses, return_moments=False)
+    coords_true = kraitchman.rotated_to_principal_axes(M_true.coords, M_true.masses, return_moments=False)
+
+    transformed_coords_preds = einops.einsum(
+        TRANSFORMS.to(coords_pred),
+        coords_pred,
+        "t i j, n j -> t n i"
+    ).unsqueeze(-2)  # (T N 1 3)
+
+    # An T x N x N matrix where transformed_costs[t][i][j] is the cost of assigning atom #i in
+    # coords_pred (under the t-th transformation) to atom #j in coords_true.
+    # For our purposes, the cost is the MSE between the coordinates of the two atoms.
+    # However, we have to be careful about not assigning two atoms of different types together.
+    # To avoid this, we can set their cost to infinity.
+    transformed_costs = torch.square(transformed_coords_preds - coords_true).sum(dim=-1)
+    transformed_costs = torch.where(atom_nums == atom_nums.T, transformed_costs, torch.inf)
+    transformed_costs = transformed_costs.cpu().numpy()
+
+    rmses = []
+    for cost in transformed_costs:
+        row_ind, col_ind = scipy.optimize.linear_sum_assignment(cost)
+        rmses.append(cost[row_ind, col_ind].sum())
+    rmses = torch.tensor(rmses).to(coords_pred)
+
+    return {"coord_rmse": rmses.min().sqrt().item()}
+
+
+def cond_rmses(M_pred):
+    coords, moments = kraitchman.rotated_to_principal_axes(M_pred.coords, M_pred.masses)
+
+    cond_errors = torch.square(coords.abs() - M_pred.cond_labels)
+    cond_errors = torch.where(M_pred.cond_mask, cond_errors, 0.0)
+    moments_errors = torch.square(moments - M_pred.moments)
+
+    return {
+        "unsigned_coords_rmse": cond_errors.sum().sqrt().item(),
+        "moments_rmse": moments_errors.sum().sqrt().item(),
+    }
 
 
 def connectivity_correctness(M_pred, M_true):
     try:
         smiles_pred = M_pred.smiles()
         smiles_true = M_true.smiles()
-        return float(smiles_pred == smiles_true)
+        result = float(smiles_pred == smiles_true)
     except:
-        return 0.0
+        result = 0.0
+    return {"correctness": result}
 
 
+@torch.no_grad()
 def evaluate(M_pred, M_true):
-    metrics = {
-        "correctness": connectivity_correctness(M_pred=M_pred, M_true=M_true)
+    return {
+        **connectivity_correctness(M_pred=M_pred, M_true=M_true),
+        **cond_rmses(M_pred=M_pred),
+        **coord_rmse(M_pred=M_pred, M_true=M_true),
     }
-
-    # atom_nums = M_true.atom_nums
-    # cond_mask = M_true.cond_mask
-    #
-    # heavy = (atom_nums != 1).squeeze(-1)
-    # cxyz_pred = M_pred.xyz[heavy][cond_mask[heavy]].abs()
-    # cxyz_true = M_true.xyz[heavy][cond_mask[heavy]].abs()
-    #
-    # abs_C_rmsd = (cxyz_pred - cxyz_true).square().mean().sqrt()
-    # heavy_rmsd, best_flip = align_and_rmsd(atom_nums.squeeze(-1), M_pred.xyz, M_true.xyz)
-
-    return metrics

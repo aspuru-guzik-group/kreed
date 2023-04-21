@@ -2,7 +2,7 @@ import torch
 import torch.linalg as LA
 
 
-def rotated_to_principal_axes(coords, masses, return_moments=False):
+def rotated_to_principal_axes(coords, masses, return_moments=True):
     coords, m = coords.double(), masses.double()
 
     # Subtract CoM

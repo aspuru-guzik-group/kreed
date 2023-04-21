@@ -57,7 +57,7 @@ class ConformerDataset(Dataset):
         masses_normalized = masses / masses.sum()
 
         # Canonicalize conformation
-        coords, moments = kraitchman.rotated_to_principal_axes(coords, atom_nums, return_moments=True)
+        coords, moments = kraitchman.rotated_to_principal_axes(coords, masses)
 
         # Retrieve unsigned coordinates for isotopically abundant atoms that
         # are not too close to coordinate axis.
