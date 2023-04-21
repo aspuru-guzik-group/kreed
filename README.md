@@ -17,7 +17,7 @@ python -m src.experimental.train --accelerator=gpu --devices=1 --num_workers=12 
 
 Command for training GEOM:
 ```
-python -m src.experimental.train --accelerator=gpu --devices=1 --num_workers=12 --dataset=geom --enable_wandb --wandb_run_id geom_run --enable_progress_bar --check_samples_every_n_epoch 50 --batch_size 64
+python -m src.experimental.train --accelerator=gpu --devices=1 --num_workers=12 --dataset=geom --enable_wandb --wandb_run_id geom_run --enable_progress_bar --check_samples_every_n_epoch 1 --batch_size 64
 ```
 
 Running the same command with the same run_id will resume from the last checkpoint for that run_id.
