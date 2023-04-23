@@ -122,6 +122,11 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         distributed=(cfg.strategy == "ddp"),
     )
 
+    callbacks = [
+        ModelSummary(max_depth=2),
+        EMA(decay=cfg.ema_decay, cpu_offload=True),
+    ]
+
     if cfg.wandb:
         project = "alston_train_edm" + ("_debug" if cfg.debug else "")
         logger = WandbLogger(
@@ -133,14 +138,9 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
             id=cfg.wandb_run_id,
             resume="allow",
         )
+        callbacks.append(LearningRateMonitor())
     else:
         logger = False
-
-    callbacks = [
-        ModelSummary(max_depth=2),
-        LearningRateMonitor(),
-        EMA(decay=cfg.ema_decay, cpu_offload=True),
-    ]
 
     if cfg.checkpoint:
         callbacks.extend([
