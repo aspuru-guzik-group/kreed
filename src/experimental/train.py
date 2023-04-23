@@ -42,9 +42,9 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     # Training Fields
     # ===============
 
-    max_epochs: int = 24000
+    max_epochs: int = 1500
     lr: float = 4e-4
-    wd: float = 0.001
+    wd: float = 0.0
     puncond: float = 0.0
     pdropout_cond: float = 0.1
 
@@ -65,7 +65,7 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     # ==============
 
     wandb: bool = False
-    wandb_entity: Optional[str] = None
+    wandb_entity: Optional[str] = "matter-lab"
     wandb_run_id: str = None
 
     checkpoint: bool = True
@@ -123,7 +123,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
     )
 
     if cfg.wandb:
-        project = "train_edm" + ("_debug" if cfg.debug else "")
+        project = "alston_train_edm" + ("_debug" if cfg.debug else "")
         logger = WandbLogger(
             project=project,
             entity=cfg.wandb_entity,
