@@ -261,6 +261,7 @@ class EquivariantDDPM(nn.Module):
         return self.gaussian_KL_qp(M, mu_T, sigma_T, zeros, ones)
 
     def nlls(self, M, w=None):
+        # FIXME: incorrect for parameterization=x; double check (!!!)
         forward_fn = functools.partial(self.guided_forward, w=w)
 
         t = torch.randint(1, self.T + 1, size=[M.batch_size], device=M.device)
