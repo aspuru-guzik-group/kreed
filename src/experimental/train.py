@@ -44,7 +44,7 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
 
     max_epochs: int = 1500
     lr: float = 4e-4
-    wd: float = 0.0
+    wd: float = 1e-3
     puncond: float = 0.0
     pdropout_cond: float = 0.1
 
