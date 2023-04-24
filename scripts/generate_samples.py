@@ -1,47 +1,68 @@
 import sys
 sys.path.append('.')
-from src.diffusion.lit import LitEquivariantDDPM, LitEquivariantDDPMConfig
-from src.experimental.train import TrainEquivariantDDPMConfig
-checkpoint_path = 'checkpoints/v_geom_reflect/last.ckpt'
-model = LitEquivariantDDPM.load_from_checkpoint(checkpoint_path).to('cuda:0')
 
-from src.evaluate import evaluate
+# parameters:
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('--directory', type=str, default='qm9_run_main_samples')
+parser.add_argument('--checkpoint_path', type=str, default='checkpoints/qm9_run_main/last.ckpt')
+parser.add_argument('--dataset', type=str, default='qm9')
+parser.add_argument('--p_drop', type=float, default=0.0)
+parser.add_argument('--samples_per_example', type=int, default=3)
+parser.add_argument('--n_examples', type=int, default=100)
+parser.add_argument('--split', type=str, default='test')
+args = parser.parse_args()
+
+directory = args.directory
+checkpoint_path = args.checkpoint_path
+dataset = args.dataset
+p_drop = args.p_drop
+samples_per_example = args.samples_per_example
+n_examples = args.n_examples
+split = args.split
+
+# qm9 test set is 13k examples
+# geom test set is 69k examples, but you only really need to evaluate on the lowest-energy conformer
+from src.diffusion.lit import LitEquivariantDDPM
+from src.experimental.train import TrainEquivariantDDPMConfig # necessary
+model = LitEquivariantDDPM.load_from_checkpoint(checkpoint_path).to('cuda:0')
 import dgl
-from src.datamodules import GEOMDatamodule, QM9Datamodule
-from src.kraitchman import ATOM_MASSES
+from src.datamodule import ConformerDatamodule
 from tqdm import tqdm
 import dgl
 import pickle
 from torch.utils.data import Dataset
 
 from pathlib import Path
-path = Path('v_geom_samples')
+path = Path(directory)
+path.mkdir(exist_ok=True)
 
-dataset = 'geom'
+data = ConformerDatamodule(
+    dataset=dataset,
+    seed=100,
+    batch_size=1,
+    split_ratio=(0.8, 0.1, 0.1),
+    num_workers=0,
+    distributed=False,
+    tol=-1.0,
+    p_drop_labels=p_drop,
+)
 
-print('loading datamodule... ', end='')
+render_every_n_steps = 5
 if dataset == 'geom':
-    data = GEOMDatamodule(100, 1)
-    B = 64
-    samples_per_example = 4
-    render_every_n_steps = 5
+    B = 200
 elif dataset == 'qm9':
-    data = QM9Datamodule(100, 1)
-    samples_per_example = 4
-    B = 20_000
-    render_every_n_steps = 5
-print('done!')
+    B = 2500
 
-
-dataset = data.datasets['val']
-
-n_examples = 40
+dataset = data.datasets[split]
 
 # pick random numbers between 0 and len(dataset)
 import torch
 torch.manual_seed(100)
 import numpy as np
 np.random.seed(102)
+if n_examples == -1:
+    n_examples = len(dataset)
 random_indices = np.random.choice(len(dataset), n_examples, replace=False)
 
 newdataset = []

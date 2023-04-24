@@ -6,7 +6,7 @@ import torch
 import pickle
 from tqdm import tqdm
 from pathlib import Path
-path = Path('v_geom_samples')
+path = Path('qm9_run_main_samples')
 
 with open(path / 'truths.pkl', 'rb') as f:
     truths = pickle.load(f)
