@@ -69,7 +69,8 @@ class EquivariantDynamics(nn.Module):
                 hidden_features=hidden_features,
                 edge_features=EquivariantBlock.distance_features(3, egnn_equivariance, egnn_relaxed),
                 adaptive_features=adaptive_features,
-                norm=norm_hidden,
+                norm_coords=norm_coords,
+                norm_hidden=norm_hidden,
                 act=act,
                 update_hidden=(i + 1 < num_layers),
             )
