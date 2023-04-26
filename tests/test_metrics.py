@@ -4,7 +4,7 @@ from scipy.stats import ortho_group
 
 from src import kraitchman
 from src.datamodule import ConformerDatamodule
-from src.evaluate import evaluate
+from src.metrics import evaluate_prediction
 
 
 def randomly_move_rigidly(M):
@@ -39,11 +39,11 @@ def test_kraitchman(conformer_datamodule):
         assert torch.allclose(moments1, moments2, rtol=1e-5, atol=1e-4)
 
 
-def test_evaluate(conformer_datamodule):
+def test_evaluate_prediction(conformer_datamodule):
     batch = next(iter(conformer_datamodule.train_dataloader()))
     for M in batch.unbatch():
         M_pred = randomly_move_rigidly(M)
-        metrics = evaluate(M_pred=M_pred, M_true=M)
+        metrics = evaluate_prediction(M_pred=M_pred, M_true=M)
 
         try:
             M.smiles()

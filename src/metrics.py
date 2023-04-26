@@ -81,7 +81,7 @@ def connectivity_correctness(M_pred, M_true):
 
 
 @torch.no_grad()
-def evaluate(M_pred, M_true):
+def evaluate_prediction(M_pred, M_true):
     return {
         **connectivity_correctness(M_pred=M_pred, M_true=M_true),
         **cond_rmses(M_pred=M_pred),

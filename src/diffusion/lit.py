@@ -9,7 +9,7 @@ import wandb
 from pytorch_lightning.loggers.wandb import WandbLogger
 
 from src.diffusion.ddpm import EquivariantDDPM, EquivariantDDPMConfig
-from src.evaluate import evaluate
+from src.metrics import evaluate_prediction
 from src.visualize import html_render_molecule, html_render_trajectory
 
 
@@ -138,7 +138,7 @@ class LitEquivariantDDPM(pl.LightningModule):
         metrics = collections.defaultdict(list)
 
         for i in tqdm.trange(M.batch_size, desc=f"Evaluating {split} samples", leave=False):
-            sample_metrics = evaluate(M_pred=M_preds[i], M_true=M_trues[i])
+            sample_metrics = evaluate_prediction(M_pred=M_preds[i], M_true=M_trues[i])
             for k, v in sample_metrics.items():
                 metrics[k].append(v)
 
