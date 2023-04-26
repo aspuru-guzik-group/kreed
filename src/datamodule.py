@@ -123,14 +123,14 @@ class ConformerDatamodule(pl.LightningDataModule):
             if molecule_id not in D:
                 D[molecule_id] = list()
             D[molecule_id].append((txyz, geom_id))
-        D = list(D.values())
+        D = [D[k] for k in sorted(D.keys())]  # written this way to be ordered deterministically
         print(f"Dataset: {sum(len(C) for C in D)} conformations from {len(D)} molecules.")
 
         # Create train/val/test split
         splits = {"train": None, "val": None, "test": None}
         val_test_ratio = split_ratio[1] / (split_ratio[1] + split_ratio[2])
         splits["train"], D = train_test_split(D, train_size=split_ratio[0], random_state=seed)
-        splits["val"], splits["test"] = train_test_split(D, train_size=val_test_ratio, random_state=seed + 1)
+        splits["val"], splits["test"] = train_test_split(D, train_size=val_test_ratio, random_state=(seed + 1))
 
         # Create PyTorch datasets
         datasets = {}
