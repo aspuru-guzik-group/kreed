@@ -38,6 +38,8 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
     egnn_relaxed: bool = True
     zero_com_before_blocks: bool = True
 
+    project_sample_orthogonally: bool = True
+
     # ===============
     # Sampling Fields
     # ===============
@@ -136,7 +138,7 @@ class EquivariantDDPM(nn.Module):
     def sample_M_randn_like(self, M, mean=None, std=None, return_noise=False):
         eps = torch.randn_like(M.coords)
         coords = eps if (mean is None) else (mean + std * eps)
-        coords = utils.zeroed_com(M, coords, orthogonal=True)
+        coords = utils.zeroed_com(M, coords, orthogonal=self.config.project_sample_orthogonally)
 
         if not torch.isfinite(coords).all():
             print("(!!!) NaNs detected, setting to 0.")
