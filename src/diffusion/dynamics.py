@@ -27,7 +27,8 @@ class EquivariantDynamics(nn.Module):
         cond_features,
         hidden_features,
         num_layers,
-        norm_type,
+        norm_coords,
+        norm_hidden,
         norm_adaptively,
         act,
         egnn_equivariance,
@@ -48,7 +49,7 @@ class EquivariantDynamics(nn.Module):
         nf = atom_features + temb_features + 1 + 1 + 3 + 3 + 3
         self.proj_h = nn.Linear(nf, hidden_features)
 
-        if norm_adaptively and (norm_type != "none"):
+        if norm_adaptively and (norm_hidden != "none"):
             adaptive_features = cond_features
             self.proj_cond = nn.Sequential(
                 nn.Linear(nf, cond_features),
@@ -68,7 +69,7 @@ class EquivariantDynamics(nn.Module):
                 hidden_features=hidden_features,
                 edge_features=EquivariantBlock.distance_features(3, egnn_equivariance, egnn_relaxed),
                 adaptive_features=adaptive_features,
-                norm=norm_type,
+                norm=norm_hidden,
                 act=act,
                 update_hidden=(i + 1 < num_layers),
             )

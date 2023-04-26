@@ -30,7 +30,8 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
     hidden_features: int = 256
 
     num_layers: int = 6
-    norm_type: Literal["layer", "graph", "none"] = "graph"
+    norm_coords: Literal["se3", "none"] = "none"
+    norm_hidden: Literal["layer", "graph", "none"] = "graph"
     norm_adaptively: bool = True
     act: Literal["silu", "gelu"] = "silu"
 

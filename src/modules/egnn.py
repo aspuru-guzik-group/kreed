@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from src.modules.layers import Activation
-from src.modules.normalizations import GraphNorm, LayerNorm
+from src.modules.normalizations import GraphNorm, LayerNorm, SE3Norm
 
 
 class EquivariantBlock(nn.Module):
@@ -52,7 +52,8 @@ class EquivariantBlock(nn.Module):
         hidden_features,
         edge_features,
         adaptive_features,
-        norm,
+        norm_coords,
+        norm_hidden,
         act,
         update_hidden=True,
     ):
@@ -66,14 +67,19 @@ class EquivariantBlock(nn.Module):
         message_features = (2 * hidden_features) + edge_features
         message_features += self.distance_features(dim, equivariance, relaxed)
 
+        if norm_coords == "se3":
+            self.norm_coords = SE3Norm(adaptive_features)
+        else:
+            self.norm_coords = None
+
         # FIXME: can simplify logic here
-        if norm == "layer":
+        if norm_hidden == "layer":
             self.norm_h = LayerNorm(hidden_features, adaptive_features)
             self.norm_h_agg = LayerNorm(hidden_features, adaptive_features) if update_hidden else None
-        elif norm == "graph":
+        elif norm_hidden == "graph":
             self.norm_h = GraphNorm(hidden_features, adaptive_features)
             self.norm_h_agg = GraphNorm(hidden_features, adaptive_features) if update_hidden else None
-        elif norm == "none":
+        elif norm_hidden == "none":
             self.norm_h = self.norm_h_agg = None
         else:
             raise ValueError()
@@ -132,7 +138,9 @@ class EquivariantBlock(nn.Module):
             G.apply_edges(self.message)
 
             G.update_all(fn.copy_e("msg_x", "m"), fn.sum("m", "x_agg"))
-            coords = coords + G.ndata["x_agg"]
+            x_agg = G.ndata["x_agg"]
+            x_agg = x_agg if (self.norm_coords is None) else self.norm_coords(M, coords=x_agg, y=y)
+            coords = coords + x_agg
 
             if self.update_hidden:
                 G.update_all(fn.copy_e("msg_h", "m"), fn.sum("m", "h_agg"))
