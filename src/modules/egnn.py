@@ -73,16 +73,17 @@ class EquivariantBlock(nn.Module):
             self.norm_coords = None
 
         # FIXME: can simplify logic here
-        if norm_hidden == "layer":
-            self.norm_h = LayerNorm(hidden_features, adaptive_features)
-            self.norm_h_agg = LayerNorm(hidden_features, adaptive_features) if update_hidden else None
-        elif norm_hidden == "graph":
-            self.norm_h = GraphNorm(hidden_features, adaptive_features)
-            self.norm_h_agg = GraphNorm(hidden_features, adaptive_features) if update_hidden else None
-        elif norm_hidden == "none":
+        if norm_hidden == "none":
             self.norm_h = self.norm_h_agg = None
         else:
-            raise ValueError()
+            if norm_hidden == "layer":
+                Norm = LayerNorm
+            elif norm_hidden == "graph":
+                Norm = GraphNorm
+            else:
+                raise ValueError()
+            self.norm_h = Norm(hidden_features, adaptive_features)
+            self.norm_h_agg = Norm(hidden_features, adaptive_features) if update_hidden else None
 
         if update_hidden:
             self.edge_mlp = nn.Sequential(
