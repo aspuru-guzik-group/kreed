@@ -150,7 +150,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
                 monitor="val/coord_rmse",
                 save_top_k=3,
                 verbose=True,
-                every_n_epochs=1,
+                every_n_epochs=cfg.check_samples_every_n_epochs,
             ),
             ModelCheckpoint(
                 dirpath=ckpt_dir,
