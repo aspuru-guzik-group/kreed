@@ -1,6 +1,6 @@
 import torch
 import sys
-sys.path.append('.')
+sys.path.append('..')
 from src.datamodule import ConformerDatamodule
 from src.diffusion.dynamics import EquivariantDynamics
 from copy import deepcopy

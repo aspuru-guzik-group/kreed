@@ -1,33 +1,29 @@
-import dgl
 import torch
 import torch.linalg as LA
 
-def rotated_to_principal_axes(G, return_moments=False):
-    with G.local_scope():
 
-        # Center molecule to center of mass (CoM)
-        coms = dgl.sum_nodes(G, "xyz", weight="atom_masses") / dgl.sum_nodes(G, "atom_masses")
+def rotated_to_principal_axes(coords, masses, return_moments=True):
+    coords, m = coords.double(), masses.double()
 
-        # Compute planar matrix of inertia
-        xyz = G.ndata["xyz"] - dgl.broadcast_nodes(G, coms)
-        xyz = xyz.double()
+    # Subtract CoM
+    com = torch.sum(m * coords, dim=0) / m.sum()
+    coords = coords - com
 
-        # P = sum_{i = 1}^n m_i * r_i * r_i^T
-        B, N = G.batch_size, xyz.shape[0]
-        P = G.ndata['atom_masses'].view(N, 1, 1) * torch.bmm(xyz.unsqueeze(-1), xyz.unsqueeze(-2))
+    # Compute planar dyadic
+    dyadic = m.unsqueeze(-1) * coords.unsqueeze(-1) * coords.unsqueeze(-2)  # (N 1 1) * (N 3 1) * (N 1 3)
+    dyadic = dyadic.sum(dim=0)  # (3 3)
 
-        G.ndata["P"] = P.view(N, 9)  # flatten to use dgl.sum_nodes()
-        P = dgl.sum_nodes(G, "P").view(B, 3, 3)
-
-    moments, V = LA.eigh(P)  # (B 3) (B 3 3)
-    moments = moments.detach()
+    # Diagonalize in double precision
+    moments, V = LA.eigh(dyadic)  # (3) (3 3)
 
     # Sort eigenvalues in descending order
     moments = torch.flip(moments, dims=[-1])
     V = torch.flip(V, dims=[-1])
 
-    V_T = dgl.broadcast_nodes(G, V.transpose(-1, -2))
+    # Sanity check
+    Q = V @ torch.diag_embed(moments) @ V.mT
+    err = (dyadic - Q).abs().max()
+    assert err <= 1e-5, err.item()
 
-    G_canon = G.local_var()
-    G_canon.ndata["xyz"] = torch.bmm(V_T, xyz.unsqueeze(-1)).squeeze(-1).float()
-    return (G_canon, moments) if return_moments else G_canon
+    coords = (coords @ V).float()
+    return (coords, moments.float()) if return_moments else coords

@@ -11,27 +11,15 @@ with open(ROOT / "trajectory_template.html", "r") as f:
     JS_TRAJECTORY_TEMPLATE = f.read()
 
 
-def format_as_xyzfile(atom_nums, coords):
-    xyzfile = f"{atom_nums.shape[0]}\n\n"
-    for a, xyz in zip(atom_nums, coords):
-        x, y, z = xyz
-        xyzfile += f"{PTABLE.GetElementSymbol(int(a))} {format(x.item(), 'f')} {format(y.item(), 'f')} {format(z.item(), 'f')}\n"
-    return xyzfile
+def html_render_molecule(M):
+    return JS_MOLECULE_TEMPLATE % (M.id_as_int, repr(M.xyzfile()))
 
 
-def html_render_molecule(geom_id, atom_nums, coords):
-    xyzfile = format_as_xyzfile(atom_nums, coords)
-    return JS_MOLECULE_TEMPLATE % (geom_id, repr(xyzfile))
-
-
-def html_render_trajectory(geom_id, atom_nums, coords_trajectory):
-    assert isinstance(coords_trajectory, list)
+def html_render_trajectory(Ms):
+    assert isinstance(Ms, list)
 
     trajfile = ""
-    for coords in coords_trajectory:
-        trajfile += format_as_xyzfile(atom_nums, coords)
-
-    # Prepend the last frame so zoomTo works
-    trajfile = format_as_xyzfile(atom_nums, coords_trajectory[-1]) + trajfile
-
-    return JS_TRAJECTORY_TEMPLATE % (geom_id, repr(trajfile))
+    for M in Ms:
+        trajfile += M.xyzfile()
+    trajfile = Ms[-1].xyzfile() + trajfile  # prepend the last frame so zoomTo works
+    return JS_TRAJECTORY_TEMPLATE % (Ms[0].id_as_int, repr(trajfile))

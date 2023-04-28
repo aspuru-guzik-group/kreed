@@ -1,14 +1,21 @@
 import pathlib
+
 import dgl
 import einops
-import lightning_lite
 import numpy as np
 import pytorch_lightning as pl
 import torch
+from lightning_fabric.utilities.seed import pl_worker_init_function
 from sklearn.model_selection import train_test_split
-from torch.utils.data import Dataset, DataLoader, DistributedSampler
+from torch.utils.data import DataLoader, Dataset, DistributedSampler
 
 from src import chem, kraitchman
+
+
+# ================================================================================================ #
+#                                              Caches                                              #
+# ================================================================================================ #
+
 
 def _build_edge_cache(max_nodes):
     cache = []
@@ -21,14 +28,19 @@ def _build_edge_cache(max_nodes):
 
 _EDGE_CACHE = _build_edge_cache(max_nodes=200)
 
+
+# ================================================================================================ #
+#                                         Data Handling                                            #
+# ================================================================================================ #
+
+
 class ConformerDataset(Dataset):
 
-    def __init__(self, conformations, tol, p_drop_labels):
+    def __init__(self, conformations, tol):
         super().__init__()
 
         self.conformations = conformations
         self.tol = tol
-        self.p_drop_labels = p_drop_labels
 
     def __len__(self):
         return len(self.conformations)
@@ -37,53 +49,41 @@ class ConformerDataset(Dataset):
         txyz, geom_id = self.conformations[idx]
 
         n = txyz.shape[0]
-        xyz = torch.tensor(txyz[:, 1:], dtype=torch.float)  # (N 3)
+        coords = torch.tensor(txyz[:, 1:], dtype=torch.float)  # (N 3)
         atom_nums = torch.tensor(txyz[:, :1], dtype=torch.long)  # (N 1)
 
-        # Create a complete graph
-        n = atom_nums.shape[0]
-        edges = _EDGE_CACHE[:(n * (n - 1)), :]
-        u, v = edges[:, 0], edges[:, 1]
-
-        G = dgl.graph((u, v), num_nodes=n)
-        G.ndata["atom_nums"] = atom_nums  # (N)
-        G.ndata["atom_ids"] = chem.ATOM_ZTOI[atom_nums]  # (N)
-        G.ndata["atom_masses"] = chem.ATOM_MASSES[atom_nums]  # (N)
-        G.ndata["xyz"] = xyz  # (N 3)
+        # Precompute
+        masses = chem.atom_masses_from_nums(atom_nums)
+        masses_normalized = masses / masses.sum()
 
         # Canonicalize conformation
-        G, moments = kraitchman.rotated_to_principal_axes(G, return_moments=True)
-        xyz = G.ndata["xyz"]
+        coords, moments = kraitchman.rotated_to_principal_axes(coords, masses)
 
         # Retrieve unsigned coordinates for isotopically abundant atoms that
-        # are not too close to coordinate axis
-        cond_mask = torch.isin(atom_nums, chem.ISOTOPICALLY_ABUNDANT_ATOMS) & (xyz.abs() >= self.tol)
-        if self.p_drop_labels > 0.0:
-            # Drop labels with probability p_drop_labels
-            # sample a mask of shape (N 3) with values in [0, 1]
-            mask = torch.rand_like(xyz) > self.p_drop_labels
-            cond_mask = cond_mask & mask
-        
-        cond_labels = torch.where(cond_mask, xyz.abs(), 0.0)
-        G.ndata["cond_mask"] = cond_mask  # (N 3)
-        G.ndata["cond_labels"] = cond_labels  # (N 3)
+        # are not too close to coordinate axis.
+        # cond_mask is True at elements of cond_labels that are specified
+        cond_mask = torch.isin(atom_nums, chem.ISOTOPICALLY_ABUNDANT_ATOMS) & (coords.abs() >= self.tol)
+        cond_labels = torch.where(cond_mask, coords.abs(), 0.0)
 
-        # Record graph-level data (hack: store as node features)
-        G.ndata["moments"] = einops.repeat(moments, "o d -> (n o) d", n=n)  # (N 3)
-        G.ndata["id"] = torch.full_like(atom_nums, geom_id, dtype=torch.long)
+        # Create a complete graph
+        edges = _EDGE_CACHE[:(n * (n - 1)), :]
+        u, v = edges[:, 0], edges[:, 1]
+        G = dgl.graph((u, v), num_nodes=n)
 
-        # TODO: commented out since we require all atoms to be present for
-        #  atom-weighted CoM to make sense
-        # Potentially filter atoms
-        # filter_mask = torch.full_like(atom_nums, True, dtype=torch.bool)
-        # if self.remove_Hs:
-        #     filter_mask &= (atom_nums != 1)
-        # if self.carbon_only:
-        #     filter_mask &= (atom_nums == 6)
-        # if not torch.all(filter_mask):
-        #     G = dgl.node_subgraph(G, filter_mask, store_ids=False)
+        # Store graph-label data as repeated node features
+        moments = einops.repeat(moments, "c -> n c", n=n)
+        geom_id = torch.full([n, 1], geom_id, dtype=torch.long)
 
-        return G
+        # Wrapper
+        M = chem.Molecule(
+            graph=G,
+            coords=coords, atom_nums=atom_nums, masses=masses, masses_normalized=masses_normalized,
+            cond_labels=cond_labels, cond_mask=cond_mask,
+            moments=moments, id=geom_id,
+        )
+
+        # Convert to DGL to take advantage of DGL batching
+        return chem.Molecule.to_dgl(M)
 
 
 class ConformerDatamodule(pl.LightningDataModule):
@@ -94,10 +94,9 @@ class ConformerDatamodule(pl.LightningDataModule):
         seed,
         batch_size,
         split_ratio,
-        num_workers,
-        distributed,
         tol,
-        p_drop_labels,
+        num_workers=0,
+        distributed=False,
     ):
         super().__init__()
 
@@ -107,7 +106,6 @@ class ConformerDatamodule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.distributed = distributed
         self.tol = tol
-        self.p_drop_labels = p_drop_labels
 
         # Load data
         data_dir = pathlib.Path(__file__).parents[1] / "data" / dataset / "processed"
@@ -119,18 +117,20 @@ class ConformerDatamodule(pl.LightningDataModule):
         coords = np.split(coords, start_indices[1:])
 
         # Group conformations by molecule
-        D = []
+        D = dict()
         for info, txyz in zip(metadata, coords):
             _, molecule_id, geom_id = list(info)
-            if molecule_id >= len(D):
-                D.append([])
+            if molecule_id not in D:
+                D[molecule_id] = list()
             D[molecule_id].append((txyz, geom_id))
+        D = [D[k] for k in sorted(D.keys())]  # written this way to be ordered deterministically
+        print(f"Dataset: {sum(len(C) for C in D)} conformations from {len(D)} molecules.")
 
         # Create train/val/test split
         splits = {"train": None, "val": None, "test": None}
         val_test_ratio = split_ratio[1] / (split_ratio[1] + split_ratio[2])
         splits["train"], D = train_test_split(D, train_size=split_ratio[0], random_state=seed)
-        splits["val"], splits["test"] = train_test_split(D, train_size=val_test_ratio, random_state=seed+1)
+        splits["val"], splits["test"] = train_test_split(D, train_size=val_test_ratio, random_state=(seed + 1))
 
         # Create PyTorch datasets
         datasets = {}
@@ -138,19 +138,21 @@ class ConformerDatamodule(pl.LightningDataModule):
             conformations = []
             for mol_conformers in D_split:
                 conformations.extend(mol_conformers)
-            datasets[split] = ConformerDataset(conformations, tol=tol, p_drop_labels=p_drop_labels)
+            datasets[split] = ConformerDataset(conformations, tol=tol)
         self.datasets = datasets
+
+        self.dgl_collate = dgl.dataloading.GraphCollator().collate
 
     def train_dataloader(self):
         return self._loader(split="train", shuffle=True, drop_last=True)
 
     def val_dataloader(self):
-        return self._loader(split="val", shuffle=False)
+        return self._loader(split="val")
 
     def test_dataloader(self):
-        return self._loader(split="test", shuffle=False)
+        return self._loader(split="test")
 
-    def _loader(self, split, shuffle, drop_last=False):
+    def _loader(self, split, shuffle=False, drop_last=False):
         if self.distributed:
             sampler = DistributedSampler(
                 seed=self.seed,
@@ -169,7 +171,11 @@ class ConformerDatamodule(pl.LightningDataModule):
             sampler=sampler,
             num_workers=self.num_workers,
             drop_last=drop_last,
-            worker_init_fn=lightning_lite.utilities.seed.pl_worker_init_function,
-            collate_fn=dgl.dataloading.GraphCollator().collate,
+            worker_init_fn=pl_worker_init_function,
+            collate_fn=self._collate_fn,
             pin_memory=True,
         )
+
+    def _collate_fn(self, items):
+        G = self.dgl_collate(items)
+        return chem.Molecule.from_dgl(G)
