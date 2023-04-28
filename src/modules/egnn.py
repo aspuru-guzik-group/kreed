@@ -72,7 +72,6 @@ class EquivariantBlock(nn.Module):
         else:
             self.norm_coords = None
 
-        # FIXME: can simplify logic here
         if norm_hidden == "none":
             self.norm_h = self.norm_h_agg = None
         else:
