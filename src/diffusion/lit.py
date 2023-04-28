@@ -131,7 +131,7 @@ class LitEquivariantDDPM(pl.LightningModule):
             loss = model.simple_losses(M, puncond=hp.puncond).mean()
             self.log(f"{split}/loss", loss, batch_size=M.batch_size)
         else:
-            loss = model.ema_model.nlls(M).mean()
+            loss = model.nlls(M).mean()
             self.log(f"{split}/nll", loss, batch_size=M.batch_size, sync_dist=hp.distributed)
 
         return loss
