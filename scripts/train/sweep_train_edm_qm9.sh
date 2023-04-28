@@ -7,7 +7,7 @@
 #SBATCH --partition=rtx6000
 #SBATCH --qos=normal
 #SBATCH --export=ALL
-#SBATCH --array=0-24%24
+#SBATCH --array=0-16%16
 #SBATCH --output=logs/array-%A_%a.out
 #SBATCH -c 8
 

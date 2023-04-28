@@ -39,9 +39,10 @@ TRAIN_COMMAND_TEMPLATE = (
 
 SWEEP_GRID = [
     ["--parameterization=eps", "--parameterization=x"],
-    ["--norm_type=graph", "--norm_type=graph --disable_norm_adaptively", "--norm_type=none --disable_norm_adaptively"],
     ["--egnn_equivariance=e3", "--egnn_equivariance=ref"],
     ["", "--disable_egnn_relaxed"],
+    ["", "--disable_project_sample_orthogonally"],
+    # ["--norm_type=layer", "--norm_type=none --disable_norm_adaptively"],
 ]
 
 
