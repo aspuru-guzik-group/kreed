@@ -113,36 +113,31 @@ class LitEquivariantDDPM(pl.LightningModule):
             M = M.replace(cond_mask=cond_mask, cond_labels=torch.where(cond_mask, M.cond_labels, 0.0))
 
         if split == "train":
-            model = self.edm
-        else:
-            model = self.ema.ema_model
-
-        # Visualize and assess some samples
-        if (
-            (self.current_epoch > 0)  # don't bother sampling before training
-            and ((self.current_epoch + 1) % hp.check_samples_every_n_epochs == 0)
-            and (batch_idx < hp.samples_assess_n_batches)
-        ):
-            n = hp.samples_visualize_n_mols if (batch_idx == 0) else 0
-            self._assess_and_visualize_samples(model=model, M=M, split=split, n_visualize=n)
-
-        # Forward pass
-        if split == "train":
-            loss = model.simple_losses(M, puncond=hp.puncond).mean()
+            loss = self.edm.simple_losses(M, puncond=hp.puncond).mean()
             self.log(f"{split}/loss", loss, batch_size=M.batch_size)
+
         else:
-            loss = model.nlls(M).mean()
+            # Visualize and assess some samples
+            if (
+                (self.current_epoch > 0)  # don't bother sampling before training
+                and ((self.current_epoch + 1) % hp.check_samples_every_n_epochs == 0)
+                and (batch_idx < hp.samples_assess_n_batches)
+            ):
+                n = hp.samples_visualize_n_mols if (batch_idx == 0) else 0
+                self._assess_and_visualize_samples(M=M, split=split, n_visualize=n)
+
+            loss = self.ema.ema_model.nlls(M).mean()
             self.log(f"{split}/nll", loss, batch_size=M.batch_size, sync_dist=hp.distributed)
 
         return loss
 
     @torch.no_grad()
-    def _assess_and_visualize_samples(self, model, M, split, n_visualize):
+    def _assess_and_visualize_samples(self, M, split, n_visualize):
         hp = self.hparams
 
         T = self.config.timesteps
         keep_frames = list(reversed(range(-1, T + 1, hp.samples_render_every_n_frames)))
-        M_preds, frames = model.sample(M=M, keep_frames=set(keep_frames))
+        M_preds, frames = self.ema.ema_model.sample(M=M, keep_frames=set(keep_frames))
 
         M_trues = M.cpu().unbatch()
         M_preds = M_preds.cpu().unbatch()
