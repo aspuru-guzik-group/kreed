@@ -167,3 +167,8 @@ data/geom
 data/qm9
 
 qm9_run_main_samples_old
+qm9_run_main_p0_samples
+qm9_run_main_p10_samples
+geom_run_reflect_eq_il_p0_samples
+geom_run_reflect_eq_il_p10_samples
+samples_MoML
