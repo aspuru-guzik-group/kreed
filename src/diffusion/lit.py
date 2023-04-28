@@ -10,6 +10,7 @@ from pytorch_lightning.loggers.wandb import WandbLogger
 
 from src.diffusion.ddpm import EquivariantDDPM, EquivariantDDPMConfig
 from src.metrics import evaluate_prediction
+from src.modules import EMA
 from src.visualize import html_render_molecule, html_render_trajectory
 
 
@@ -20,6 +21,7 @@ class LitEquivariantDDPM(pl.LightningModule):
         config: EquivariantDDPMConfig,
         lr, wd,
         clip_grad_norm,
+        ema_decay,
         puncond,
         pdropout_cond,
         check_samples_every_n_epochs,
@@ -34,6 +36,8 @@ class LitEquivariantDDPM(pl.LightningModule):
         self.config = config
 
         self.edm = EquivariantDDPM(config=config)
+        self.ema = EMA(self.edm, beta=ema_decay)
+
         self.grad_norm_queue = collections.deque([3000, 3000], maxlen=50)
 
     # Reference: https://github.com/Tony-Y/pytorch_warmup
@@ -89,6 +93,10 @@ class LitEquivariantDDPM(pl.LightningModule):
         grad_norm = min(grad_norm, max_norm)
         self.grad_norm_queue.append(grad_norm)
 
+    def optimizer_step(self, *args, **kwargs):
+        super().optimizer_step(*args, **kwargs)
+        self.ema.update(self.edm)
+
     def training_step(self, batch, batch_idx):
         return self._step(batch, split="train", batch_idx=batch_idx)
 
@@ -104,6 +112,11 @@ class LitEquivariantDDPM(pl.LightningModule):
             cond_mask = M.cond_mask & (~dropout_mask)
             M = M.replace(cond_mask=cond_mask, cond_labels=torch.where(cond_mask, M.cond_labels, 0.0))
 
+        if split == "train":
+            model = self.edm
+        else:
+            model = self.ema.ema_model
+
         # Visualize and assess some samples
         if (
             (self.current_epoch > 0)  # don't bother sampling before training
@@ -111,25 +124,25 @@ class LitEquivariantDDPM(pl.LightningModule):
             and (batch_idx < hp.samples_assess_n_batches)
         ):
             n = hp.samples_visualize_n_mols if (batch_idx == 0) else 0
-            self._assess_and_visualize_samples(M=M, split=split, n_visualize=n)
+            self._assess_and_visualize_samples(model=model, M=M, split=split, n_visualize=n)
 
         # Forward pass
         if split == "train":
-            loss = self.edm.simple_losses(M, puncond=hp.puncond).mean()
+            loss = model.simple_losses(M, puncond=hp.puncond).mean()
             self.log(f"{split}/loss", loss, batch_size=M.batch_size)
         else:
-            loss = self.edm.nlls(M).mean()
+            loss = model.ema_model.nlls(M).mean()
             self.log(f"{split}/nll", loss, batch_size=M.batch_size, sync_dist=hp.distributed)
 
         return loss
 
     @torch.no_grad()
-    def _assess_and_visualize_samples(self, M, split, n_visualize):
+    def _assess_and_visualize_samples(self, model, M, split, n_visualize):
         hp = self.hparams
 
         T = self.config.timesteps
         keep_frames = list(reversed(range(-1, T + 1, hp.samples_render_every_n_frames)))
-        M_preds, frames = self.edm.sample(M=M, keep_frames=set(keep_frames))
+        M_preds, frames = model.sample(M=M, keep_frames=set(keep_frames))
 
         M_trues = M.cpu().unbatch()
         M_preds = M_preds.cpu().unbatch()

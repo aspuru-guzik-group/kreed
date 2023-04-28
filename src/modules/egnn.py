@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.modules.layers import Activation
+from src.modules.ops import Activation
 from src.modules.normalizations import GraphNorm, LayerNorm, SE3Norm
 
 

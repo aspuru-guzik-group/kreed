@@ -11,7 +11,6 @@ from pytorch_lightning.loggers import WandbLogger
 
 from src.datamodule import ConformerDatamodule
 from src.diffusion import EquivariantDDPMConfig, LitEquivariantDDPM
-from src.experimental.ema import EMA
 
 torch.set_float32_matmul_precision("medium")
 
@@ -112,9 +111,10 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         config=cfg,
         lr=cfg.lr,
         wd=cfg.wd,
+        clip_grad_norm=cfg.clip_grad_norm,
+        ema_decay=cfg.ema_decay,
         puncond=cfg.puncond,
         pdropout_cond=cfg.pdropout_cond,
-        clip_grad_norm=cfg.clip_grad_norm,
         check_samples_every_n_epochs=cfg.check_samples_every_n_epochs,
         samples_visualize_n_mols=cfg.samples_visualize_n_mols,
         samples_assess_n_batches=cfg.samples_assess_n_batches,
@@ -122,10 +122,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         distributed=(cfg.strategy == "ddp"),
     )
 
-    callbacks = [
-        ModelSummary(max_depth=2),
-        EMA(decay=cfg.ema_decay, cpu_offload=True),
-    ]
+    callbacks = [ModelSummary(max_depth=2)]
 
     if cfg.wandb:
         project = "alston_train_edm" + ("_debug" if cfg.debug else "")

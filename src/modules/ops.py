@@ -39,4 +39,3 @@ class PositionalEmbedding(nn.Module):
         temb = t.float() * self.freqs
         temb = torch.cat([temb.sin(), temb.cos()], dim=-1)
         return temb
-
