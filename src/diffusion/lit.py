@@ -120,7 +120,7 @@ class LitEquivariantDDPM(pl.LightningModule):
         # Visualize and assess some samples
         if (
             (self.current_epoch > 0)  # don't bother sampling before training
-            and (self.current_epoch % hp.check_samples_every_n_epochs == 0)
+            and ((self.current_epoch + 1) % hp.check_samples_every_n_epochs == 0)
             and (batch_idx < hp.samples_assess_n_batches)
         ):
             n = hp.samples_visualize_n_mols if (batch_idx == 0) else 0

@@ -151,6 +151,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
                 save_top_k=3,
                 verbose=True,
                 every_n_epochs=cfg.check_samples_every_n_epochs,
+                save_on_train_epoch_end=False,
             ),
             ModelCheckpoint(
                 dirpath=ckpt_dir,
