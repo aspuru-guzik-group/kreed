@@ -274,7 +274,7 @@ class EquivariantDDPM(nn.Module):
             weight_0 = 1.0
         elif self.config.parameterization == "x":
             weight_tge0 = self.SNR(self.gamma(t - 1)) - self.SNR(self.gamma(t))
-            weight_0 = self.SNR(self.gamma(0))
+            weight_0 = self.SNR(self.gamma(torch.zeros_like(t)))
         else:
             raise ValueError()
 
