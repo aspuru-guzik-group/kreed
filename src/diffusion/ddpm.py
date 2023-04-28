@@ -105,8 +105,10 @@ class EquivariantDDPM(nn.Module):
 
         if cfg.parameterization == "eps":
             return out - M.coords
-        else:
+        elif self.config.parameterization == "x":
             return out
+        else:
+            raise ValueError()
 
     def guided_forward(self, M, t, w=None):
         w = self.config.guidance_strength if (w is None) else w
@@ -264,14 +266,20 @@ class EquivariantDDPM(nn.Module):
         return self.gaussian_KL_qp(M, mu_T, sigma_T, zeros, ones)
 
     def nlls(self, M, w=None):
-        # FIXME: incorrect for parameterization=x; double check (!!!)
         forward_fn = functools.partial(self.guided_forward, w=w)
 
         t = torch.randint(1, self.T + 1, size=[M.batch_size], device=M.device)
-        SNR_weight = self.SNR(self.gamma(t - 1) - self.gamma(t)) - 1
+        if self.config.parameterization == "eps":
+            weight_tge0 = self.SNR(self.gamma(t - 1) - self.gamma(t)) - 1
+            weight_0 = 1.0
+        elif self.config.parameterization == "x":
+            weight_tge0 = self.SNR(self.gamma(t - 1)) - self.SNR(self.gamma(t))
+            weight_0 = self.SNR(self.gamma(0))
+        else:
+            raise ValueError()
 
         loss_prior = self.prior_matching_loss(M)
-        loss_tge0 = 0.5 * SNR_weight * self.denoising_errors(forward_fn, M=M, t=t, reduction="sum")
-        loss_0 = 0.5 * self.denoising_errors(forward_fn, M=M, t=torch.zeros_like(t), reduction="sum")
+        loss_tge0 = 0.5 * weight_tge0 * self.denoising_errors(forward_fn, M=M, t=t, reduction="sum")
+        loss_0 = 0.5 * weight_0 * self.denoising_errors(forward_fn, M=M, t=torch.zeros_like(t), reduction="sum")
 
         return loss_prior + (self.T * loss_tge0) + loss_0 - self.log_norm_const_p_M_given_M0(M)
