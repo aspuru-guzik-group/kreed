@@ -38,10 +38,10 @@ TRAIN_COMMAND_TEMPLATE = (
 )
 
 SWEEP_GRID = [
-    ["--parameterization=eps", "--parameterization=x"],
-    ["--egnn_equivariance=e3", "--egnn_equivariance=ref"],
-    ["", "--disable_egnn_relaxed"],
-    ["", "--disable_project_sample_orthogonally"],
+    [("eps", "--parameterization=eps"), ("x", "--parameterization=x")],
+    [("e3", "--egnn_equivariance=e3"), ("rfl", "--egnn_equivariance=ref")],
+    [("", ""), ("rlx", "--disable_egnn_relaxed")],
+    [("ortho", ""), ("trnsl", "--disable_project_sample_orthogonally")],
     # ["--norm_type=layer", "--norm_type=none --disable_norm_adaptively"],
 ]
 
@@ -51,8 +51,10 @@ def make_sweep_jobs():
     jobs_size = 0
 
     with open(jobs_fname, "w+") as f:
-        for flags in itertools.product(*SWEEP_GRID):
-            parts = [TRAIN_COMMAND_TEMPLATE] + list(flags)
+        for names_and_flags in itertools.product(*SWEEP_GRID):
+            names, flags = zip(*names_and_flags)
+            run_name = "-".join(filter(None, names))
+            parts = [TRAIN_COMMAND_TEMPLATE] + list(flags) + [f"--wandb_run_name={run_name}"]
             f.write(" ".join(parts) + "\n")
             jobs_size += 1
 

@@ -66,6 +66,7 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     wandb: bool = False
     wandb_entity: Optional[str] = "matter-lab"
     wandb_run_id: str = None
+    wandb_run_name: str = None
 
     checkpoint: bool = True
     checkpoint_dir: str = "checkpoints"
@@ -127,6 +128,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
     if cfg.wandb:
         project = "alston_train_edm" + ("_debug" if cfg.debug else "")
         logger = WandbLogger(
+            name=cfg.wandb_run_name,
             project=project,
             entity=cfg.wandb_entity,
             log_model=True,
