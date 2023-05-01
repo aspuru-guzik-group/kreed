@@ -45,7 +45,7 @@ class EquivariantDynamics(nn.Module):
         self.zero_com_before_blocks = zero_com_before_blocks
 
         # atom emb + time emb + mass + mass_normalized + cond_coords + cond_mask + moments
-        self.embed_atom = nn.Embedding(82, atom_features)  # kind of wasteful but makes code simpler
+        self.embed_atom = nn.Embedding(90, atom_features)  # kind of wasteful but makes code simpler
         nf = atom_features + temb_features + 1 + 1 + 3 + 3 + 3
         self.proj_h = nn.Linear(nf, hidden_features)
 
