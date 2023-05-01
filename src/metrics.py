@@ -90,7 +90,7 @@ def evaluate_prediction(M_pred, M_true):
 
     cond_errors = torch.square(coords_pred.abs() - M_true.cond_labels)
     cond_errors = torch.where(M_pred.cond_mask, cond_errors, 0.0)
-    moments_errors = torch.square(moments_pred - M_true.moments)
+    moments_errors = torch.square(moments_pred - M_true.moments[0])
 
     out = coord_rmse(atom_nums=atom_nums, coords_pred=coords_pred, coords_true=coords_true)
 
