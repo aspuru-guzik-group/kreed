@@ -126,7 +126,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
     callbacks = [ModelSummary(max_depth=2)]
 
     if cfg.wandb:
-        project = "alston_train_edm" + ("_debug" if cfg.debug else "")
+        project = "train_edm" + ("_debug" if cfg.debug else "")
         logger = WandbLogger(
             name=cfg.wandb_run_name,
             project=project,
