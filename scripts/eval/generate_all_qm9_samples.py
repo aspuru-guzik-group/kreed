@@ -59,8 +59,16 @@ dataset = [dataset[i] for i in range(N)]
 
 # generate samples first
 
+all_cond_masks = []
 examples_to_run = []
 for G_true in dataset:
+    if p_drop > 0:
+        dropout_mask = (torch.rand_like(G_true.ndata['coords']) < p_drop)
+        cond_mask = G_true.ndata['cond_mask'] & (~dropout_mask)
+        G_true.ndata['cond_mask'] = cond_mask
+        G_true.ndata['cond_labels'] = torch.where(cond_mask, G_true.ndata['cond_labels'], 0.0)
+        all_cond_masks.extend(G_true.ndata['cond_mask'].cpu().numpy())
+
     examples_to_run.extend([G_true for _ in range(samples_per_example)])
 
 print(len(examples_to_run), 'examples to run')
@@ -92,24 +100,20 @@ loader = DataLoader(
     # pin_memory=True,
 )
 
-all_samples = []
+
+all_sample_coords = []
 for M in tqdm(loader):
-    if p_drop > 0:
-        dropout_mask = (torch.rand_like(M.coords) < p_drop)
-        cond_mask = M.cond_mask & (~dropout_mask)
-        M = M.replace(cond_mask=cond_mask, cond_labels=torch.where(cond_mask, M.cond_labels, 0.0))
 
     sample = model.edm.sample(M)
-    all_samples.extend(sample.cpu().unbatch())
+    samples = sample.cpu().unbatch()
+    for s in samples:
+        all_sample_coords.extend(s.coords.numpy())
 
-all_samples_rebatched = []
-for i in range(0, len(all_samples), samples_per_example):
-    items = all_samples[i:i+samples_per_example]
-    all_samples_rebatched.append(items)
+import numpy as np
+all_sample_coords = np.array(all_sample_coords)
+np.save(path / 'all_sample_coords.npy', all_sample_coords)
 
-# all_samples_rebatched is a list of length N, where elements are lists of Molecule objects
+if p_drop > 0:
+    all_cond_masks = np.array(all_cond_masks)
+    np.save(path / 'all_cond_masks.npy', all_cond_masks)
 
-# save all_samples
-import pickle
-with open(path / 'all_samples_rebatched.pkl', 'wb') as f:
-    pickle.dump(all_samples_rebatched, f)
