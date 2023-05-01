@@ -6,6 +6,7 @@ import torch
 from rdkit import Chem
 from rdkit.Chem import rdDetermineBonds
 from rdkit.Chem.rdchem import GetPeriodicTable
+from src import kraitchman
 
 PTABLE = GetPeriodicTable()
 ATOM_MASSES = torch.tensor([0] + [PTABLE.GetMostCommonIsotopeMass(z) for z in range(1, 119)], dtype=torch.float32)
@@ -80,6 +81,31 @@ class Molecule(_Molecule):
         mol = Chem.MolFromXYZBlock(self.xyzfile())
         rdDetermineBonds.DetermineConnectivity(mol)
         return Chem.MolToSmiles(mol)
+    
+    def show(self):
+        assert not self.batched
+        import py3Dmol
+        view = py3Dmol.view(width=400, height=400)
+        view.addModel(self.xyzfile(), 'xyz')
+        view.setStyle({'sphere':{'scale': .5}})
+        # view.setBackgroundColor('0xeeeeee')
+        view.zoomTo()
+        view.show()
+    
+    def remove_hydrogens(self):
+        assert not self.batched
+        mask = self.atom_nums.squeeze(-1) != 1
+        kwargs = {"graph": self.graph.subgraph(mask, store_ids=False)}
+        for field in self._fields:
+            if field != "graph":
+                kwargs[field] = self._asdict()[field][mask]
+        return Molecule(**kwargs)
+
+    def transform(self, transform):
+        assert not self.batched
+        kwargs = self._asdict()
+        kwargs['coords'] = kraitchman.rotated_to_principal_axes(self.coords, self.masses, False) @ transform
+        return Molecule(**kwargs)
 
     # ==========
     # Properties
