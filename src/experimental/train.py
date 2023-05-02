@@ -64,6 +64,7 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     # ==============
 
     wandb: bool = False
+    wandb_project: str = "train_edm"
     wandb_entity: Optional[str] = "matter-lab"
     wandb_run_id: str = None
     wandb_run_name: str = None
@@ -126,7 +127,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
     callbacks = [ModelSummary(max_depth=2)]
 
     if cfg.wandb:
-        project = "train_edm" + ("_debug" if cfg.debug else "")
+        project = cfg.wandb_project + ("_debug" if cfg.debug else "")
         logger = WandbLogger(
             name=cfg.wandb_run_name,
             project=project,
