@@ -104,7 +104,7 @@ loader = DataLoader(
 all_sample_coords = []
 for M in tqdm(loader):
 
-    sample = model.edm.sample(M)
+    sample = model.ema.ema_model.sample(M)
     samples = sample.cpu().unbatch()
     for s in samples:
         all_sample_coords.extend(s.coords.numpy())
