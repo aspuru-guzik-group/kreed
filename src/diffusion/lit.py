@@ -38,8 +38,7 @@ class LitEquivariantDDPM(pl.LightningModule):
         self.edm = EquivariantDDPM(config=config)
         self.ema = EMA(self.edm, beta=ema_decay)
 
-        grad_norm_queue = torch.full([50], fill_value=3000, dtype=torch.float)
-        self.register_buffer("grad_norm_queue", grad_norm_queue)
+        self.grad_norm_queue = collections.deque([3000, 3000], maxlen=50)
 
     # Reference: https://github.com/Tony-Y/pytorch_warmup
     def linear_warmup(self, step):
@@ -87,18 +86,12 @@ class LitEquivariantDDPM(pl.LightningModule):
         if not self.hparams.clip_grad_norm:
             return
 
-        max_norm = (1.5 * self.grad_norm_queue.mean()) + (2 * self.grad_norm_queue.std(correction=0))
-        self.log("max_grad_norm", max_norm.item())
+        max_norm = 1.5 * statistics.mean(self.grad_norm_queue) + 2 * statistics.stdev(self.grad_norm_queue)
+        self.log("max_grad_norm", max_norm)
 
-        grad_norm = torch.nn.utils.clip_grad_norm_(
-            self.edm.parameters(),
-            max_norm=max_norm.item(),
-            norm_type=2.0,
-            error_if_nonfinite=True
-        )
-
+        grad_norm = torch.nn.utils.clip_grad_norm_(self.edm.parameters(), max_norm=max_norm, norm_type=2.0, error_if_nonfinite=True).item()
         grad_norm = min(grad_norm, max_norm)
-        self.grad_norm_queue[self.global_step % self.grad_norm_queue.shape[0]] = grad_norm
+        self.grad_norm_queue.append(grad_norm)
 
     def optimizer_step(self, *args, **kwargs):
         super().optimizer_step(*args, **kwargs)
@@ -126,8 +119,7 @@ class LitEquivariantDDPM(pl.LightningModule):
         else:
             # Visualize and assess some samples
             if (
-                (self.current_epoch > 0)  # don't bother sampling before training
-                and ((self.current_epoch + 1) % hp.check_samples_every_n_epochs == 0)
+                ((self.current_epoch + 1) % hp.check_samples_every_n_epochs == 0)
                 and (batch_idx < hp.samples_assess_n_batches)
             ):
                 n = hp.samples_visualize_n_mols if (batch_idx == 0) else 0
