@@ -132,7 +132,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
             name=cfg.wandb_run_name,
             project=project,
             entity=cfg.wandb_entity,
-            log_model=True,
+            log_model=False,
             save_dir=ckpt_dir,
             config=dict(cfg),
             id=cfg.wandb_run_id,
@@ -143,7 +143,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         logger = False
 
     if cfg.checkpoint:
-        callbacks.extend([
+        ckpt_callbacks = [
             ModelCheckpoint(
                 dirpath=ckpt_dir,
                 filename="epoch={epoch}-rmse={val/coord_rmse:.5f}",
@@ -161,7 +161,8 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
                 verbose=True,
                 train_time_interval=datetime.timedelta(minutes=cfg.checkpoint_every_n_min),
             ),
-        ])
+        ]
+        callbacks.extend(ckpt_callbacks)
 
     if cfg.debug:
         debug_kwargs = {
@@ -189,7 +190,9 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
     ckpt_path = str(ckpt_path) if ckpt_path.exists() else None
     trainer.fit(model=ddpm, datamodule=data, ckpt_path=ckpt_path)
 
-    if cfg.wandb:
+    if cfg.wandb and (ddpm.global_rank == 0):
+        for callback in ckpt_callbacks:
+            logger._scan_and_log_checkpoints(callback)
         wandb.finish()
 
     return 0
