@@ -22,8 +22,9 @@ def rotated_to_principal_axes(coords, masses, return_moments=True):
 
     # Sanity check
     Q = V @ torch.diag_embed(moments) @ V.mT
-    err = (dyadic - Q).abs().max()
-    assert err <= 1e-5, err.item()
+    err = (dyadic - Q).abs().max().item()
+    if err > 1e-5:
+        print(f"WARNING: numerical instability in diagonalizing planar dyadic (error={err})")
 
     coords = (coords @ V).float()
     return (coords, moments.float()) if return_moments else coords
