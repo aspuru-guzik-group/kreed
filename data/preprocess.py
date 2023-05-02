@@ -11,7 +11,7 @@ def unpacker(fpath):
     with open(fpath, "rb") as f:
         if fpath.suffix == ".msgpack":
             unpacker = msgpack.Unpacker(f)
-            for batch in tqdm.tqdm(iter(unpacker), desc="Processing GEOM"):
+            for batch in tqdm.tqdm(iter(unpacker), desc="Processing"):
                 yield batch
         else:
             yield pickle.load(f)
