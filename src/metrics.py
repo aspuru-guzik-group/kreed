@@ -3,7 +3,6 @@ import itertools
 import einops
 import scipy
 import torch
-import torch.nn.functional as F
 
 from src import kraitchman
 
@@ -52,9 +51,10 @@ def coord_rmse(atom_nums, coords_pred, coords_true):
     rmses = torch.tensor(rmses).to(coords_pred)
 
     idx = rmses.argmin()
-    return {"coord_rmse": rmses[idx].sqrt().item(),
-            "transform": TRANSFORMS[idx],
-            }
+    return {
+        "coord_rmse": rmses[idx].sqrt().item(),
+        "transform": TRANSFORMS[idx],
+    }
 
 
 def cond_rmses(M_pred, moments):
@@ -107,8 +107,8 @@ def evaluate_prediction(M_pred, M_true):
     return {
         "unsigned_coords_rmse": cond_errors.sum().sqrt().item(),
         "moments_rmse": moments_errors.sum().sqrt().item(),
-        'coord_rmse': out['coord_rmse'],
-        'heavy_coord_rmse': out_no_H['coord_rmse'],
-        'transform': out_no_H['transform'],
+        "coord_rmse": out["coord_rmse"],
+        "heavy_coord_rmse": out_no_H["coord_rmse"],
+        "transform": out_no_H["transform"],
         **connectivity_correctness(M_pred=M_pred, M_true=M_true),
     }
