@@ -17,7 +17,7 @@ export CUDNN_PATH=/pkgs/cudnn-11.7-v8.5.0.96/
 
 # Conda
 source ~/.bashrc
-conda activate edm
+conda activate egnn
 
 cd ../..
 
