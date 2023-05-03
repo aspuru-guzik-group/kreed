@@ -1,4 +1,4 @@
-ROOT=/local-scratch/qm9_run_dev_samples
+ROOT=/local-scratch/qm9_run_final_samples
 CKPT=final_checkpoints/qm9.ckpt
 NSAMPLES=10
 K=5
