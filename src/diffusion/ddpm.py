@@ -206,7 +206,7 @@ class EquivariantDDPM(nn.Module):
             if (keep_frames is not None) and (step in keep_frames):
                 frames[step] = M_t.cpu()
 
-        M = self.sample_M_given_M0(M_t)
+        M = self.sample_M_given_M0(M_t, w=w)
         utils.assert_zeroed_com(M, M.coords)
         frames[-1] = M.cpu()
 
