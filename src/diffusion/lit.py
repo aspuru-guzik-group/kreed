@@ -87,7 +87,7 @@ class LitEquivariantDDPM(pl.LightningModule):
         if not self.hparams.clip_grad_norm:
             return
 
-        max_norm = (1.5 * self.grad_norm_queue.mean()) + (2 * self.grad_norm_queue.std(correction=0))
+        max_norm = (1.5 * self.grad_norm_queue.mean()) + (2 * self.grad_norm_queue.std(unbiased=False))
         self.log("max_grad_norm", max_norm.item())
 
         grad_norm = torch.nn.utils.clip_grad_norm_(
