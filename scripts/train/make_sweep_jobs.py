@@ -33,8 +33,9 @@ eval ${{lines[SLURM_ARRAY_TASK_ID]}} --wandb_run_id ${{SLURM_JOB_ID}} --checkpoi
 TRAIN_COMMAND_TEMPLATE = (
     "srun python -m src.experimental.train "
     "--accelerator=gpu --devices=1 --num_workers=8 "
-    "--dataset=qm9 --enable_wandb "
-    "--check_samples_every_n_epochs=50 --samples_assess_n_batches=10 --samples_visualize_n_mols=0"
+    "--dataset=qm9 --enable_wandb --wandb_project=sweep_train_edm_qm9 "
+    "--epochs=3000 "
+    "--check_samples_every_n_epochs=100 --samples_assess_n_batches=10 --samples_visualize_n_mols=0"
 )
 
 SWEEP_GRID = [
