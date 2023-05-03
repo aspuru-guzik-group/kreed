@@ -156,7 +156,7 @@ class LitEquivariantDDPM(pl.LightningModule):
                 continue
 
             M_pred_traj = [frames[step][i] for step in tqdm.tqdm(keep_frames + [-1], desc=f"Rendering trajectory {i}", leave=False)]
-            M_pred_traj = [m.replace(coords=m.coords).transform(transform) for m in M_pred_traj]
+            M_pred_traj = [m.replace(coords=m.coords) for m in M_pred_traj]
 
             wandb.log({
                 f"{split}_samples/true_{i}": wandb.Html(html_render_molecule(M_trues[i])),
