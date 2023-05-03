@@ -11,8 +11,8 @@ def clip_noise_schedule(alphas2, margin=0.001):
 
 
 def polynomial_schedule(timesteps, s=1e-5, power=2.0):
-    T = timesteps + 1
-    t = np.linspace(0, T, T)
+    T = timesteps
+    t = np.linspace(0, T, T + 1)
     alphas2 = (1 - np.power(t / T, power)) ** 2
     alphas2 = clip_noise_schedule(alphas2, margin=0.001)
     return (1 - 2 * s) * alphas2 + s
