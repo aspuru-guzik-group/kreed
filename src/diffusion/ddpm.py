@@ -115,6 +115,7 @@ class EquivariantDDPM(nn.Module):
         if w == 0:
             return self(M=M, t=t)
         else:
+            assert False  # TODO: remove later, just here as a temporary sanity assert
             return ((1 + w) * self(M=M, t=t, puncond=0.0)) - (w * self(M=M, t=t, puncond=1.0))
 
     def sigma(self, gamma):
