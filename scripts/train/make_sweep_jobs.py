@@ -35,13 +35,13 @@ TRAIN_COMMAND_TEMPLATE = (
     "--accelerator=gpu --devices=1 --num_workers=8 "
     "--dataset=qm9 --enable_wandb --wandb_project=sweep_train_edm_qm9 "
     "--max_epochs=3000 "
-    "--check_samples_every_n_epochs=100 --samples_assess_n_batches=10 --samples_visualize_n_mols=0"
+    "--check_samples_every_n_epochs=200 --samples_assess_n_batches=10 --samples_visualize_n_mols=0"
 )
 
 SWEEP_GRID = [
     [("eps", "--parameterization=eps"), ("x", "--parameterization=x")],
     [("e3", "--egnn_equivariance=e3"), ("rfl", "--egnn_equivariance=ref")],
-    [("", ""), ("rlx", "--disable_egnn_relaxed")],
+    [("rlx", ""), ("", "--disable_egnn_relaxed")],
     [("ortho", ""), ("trnsl", "--disable_project_sample_orthogonally")],
     # ["--norm_type=layer", "--norm_type=none --disable_norm_adaptively"],
 ]
