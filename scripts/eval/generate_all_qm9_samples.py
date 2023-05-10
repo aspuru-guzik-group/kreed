@@ -97,7 +97,6 @@ loader = DataLoader(
     drop_last=False,
     num_workers=0,
     collate_fn=collate_fn,
-    # pin_memory=True,
 )
 
 
