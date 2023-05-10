@@ -76,6 +76,7 @@ examples_to_run = []
 for G_true in dataset:
     if p_drop > 0:
         dropout_mask = (torch.rand_like(G_true.ndata['coords']) < p_drop)
+        dropout_mask |= (G_true.ndata['atom_nums'] != 6)
         cond_mask = G_true.ndata['cond_mask'] & (~dropout_mask)
         G_true.ndata['cond_mask'] = cond_mask
         G_true.ndata['cond_labels'] = torch.where(cond_mask, G_true.ndata['cond_labels'], 0.0)
