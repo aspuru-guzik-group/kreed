@@ -200,7 +200,7 @@ class EquivariantDDPM(nn.Module):
         frames = {self.T: M_T}
 
         M_t = M_T
-        for step in tqdm.tqdm(reversed(range(0, self.T)), desc="Sampling", leave=False, total=self.T):
+        for step in tqdm.tqdm(reversed(range(0, self.T)), desc="Sampling", leave=False, total=self.T, disable=None):
             s = torch.full(size=[M.batch_size], fill_value=step, device=M.device)
             M_t = self.sample_Ms_given_Mt(M_t=M_t, s=s, t=(s + 1), w=w)
 

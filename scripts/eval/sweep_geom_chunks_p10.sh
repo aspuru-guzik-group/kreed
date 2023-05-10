@@ -7,7 +7,7 @@
 #SBATCH --partition=rtx6000,a40
 #SBATCH --qos=normal
 #SBATCH --array=10-250%32
-#SBATCH --output=slurm/eval_array/p0_%A_%a.out
+#SBATCH --output=slurm/eval_array/p10_%A_%a.out
 #SBATCH -c 8
 
 source ~/.bashrc
@@ -18,7 +18,7 @@ CKPT=final_checkpoints/geom.ckpt
 NSAMPLES=10
 K=5
 THRESHOLD=0.05
-p=0.0
+p=0.10
 DIRECTORY=$ROOT/p${p}
 
 srun python scripts/eval/generate_eval_chunk_geom_samples.py --directory=$DIRECTORY --checkpoint_path=$CKPT --p_drop=$p --samples_per_example=$NSAMPLES --split=test --k=$K --threshold=$THRESHOLD --chunk=${SLURM_ARRAY_TASK_ID}

@@ -39,8 +39,12 @@ from src import chem
 import torch
 
 from pathlib import Path
+
+#======= SETUP =======#
+
 path = Path(directory) / str(chunk)
 path.mkdir(parents=True, exist_ok=True)
+
 
 data = ConformerDatamodule(
     dataset=dataset,
@@ -53,7 +57,7 @@ data = ConformerDatamodule(
 )
 
 if dataset == 'geom':
-    B = 200
+    B = 300
 elif dataset == 'qm9':
     B = 2500
 
@@ -71,7 +75,6 @@ N = len(dataset)
 
 # generate samples first
 
-all_cond_masks = []
 examples_to_run = []
 for G_true in dataset:
     if p_drop > 0:
@@ -80,7 +83,6 @@ for G_true in dataset:
         cond_mask = G_true.ndata['cond_mask'] & (~dropout_mask)
         G_true.ndata['cond_mask'] = cond_mask
         G_true.ndata['cond_labels'] = torch.where(cond_mask, G_true.ndata['cond_labels'], 0.0)
-        all_cond_masks.extend(G_true.ndata['cond_mask'].cpu().numpy())
 
     examples_to_run.extend([G_true for _ in range(samples_per_example)])
 
@@ -98,7 +100,20 @@ class InferenceDataset(Dataset):
     def __getitem__(self, idx):
         return self.examples[idx].to('cuda:0')
 
-inference_dataset = InferenceDataset(examples_to_run)
+# ======= RUN ======= #
+
+import pickle
+progress_path = path / 'progress.pkl'
+# check if path exists
+if progress_path.exists():
+    with open(progress_path, 'rb') as f:
+        progress, all_sample_coords, all_cond_masks = pickle.load(f)
+else:
+    progress = 0
+    all_sample_coords = []
+    all_cond_masks = []
+
+inference_dataset = InferenceDataset(examples_to_run[progress:])
 
 dgl_collate = dgl.dataloading.GraphCollator().collate
 collate_fn = lambda items: chem.Molecule.from_dgl(dgl_collate(items))
@@ -113,7 +128,6 @@ loader = DataLoader(
 )
 
 
-all_sample_coords = []
 for M in tqdm(loader):
 
     sample = model.ema.ema_model.sample(M)
@@ -121,7 +135,12 @@ for M in tqdm(loader):
     for s in samples:
         all_sample_coords.extend(s.coords.numpy())
 
-import numpy as np
+    all_cond_masks.extend(M.cond_mask.cpu().numpy())
+
+    progress += B
+    with open(path / 'progress.pkl', 'wb') as f:
+        pickle.dump((progress, all_sample_coords, all_cond_masks), f)
+
 all_sample_coords = np.array(all_sample_coords)
 np.save(path / 'all_sample_coords.npy', all_sample_coords)
 
@@ -138,6 +157,9 @@ by_example = np.split(all_sample_coords, start_idxs[1:])
 rebatched = []
 for sample_block in by_example:
     rebatched.append(np.split(sample_block, 10))
+
+
+# ======= EVAL ======= #
 
 # now evaluate
 top_1_rmsds = []
