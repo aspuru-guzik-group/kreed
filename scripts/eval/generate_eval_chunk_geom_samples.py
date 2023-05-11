@@ -37,7 +37,7 @@ import pickle
 from torch.utils.data import Dataset, DataLoader
 from src import chem
 import torch
-
+import numpy as np
 from pathlib import Path
 
 #======= SETUP =======#
