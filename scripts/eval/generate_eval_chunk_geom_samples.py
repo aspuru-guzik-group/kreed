@@ -221,14 +221,14 @@ for sample_coords, G_true in pbar:
     pbar.set_description(f"Top 1 correctness: {top_1_correctness / n_counted * 100}%")
 
 with open(path / 'eval.txt', 'w') as f:
-    f.write(f"Top 1 correctness: {top_1_correctness / N * 100}%")
-    f.write(f"Top 1 heavy_rmsd < {threshold}: {top_1_rmsd_below_threshold / N * 100}%")
+    f.write(f"Top 1 correctness: {top_1_correctness / N * 100}%\n")
+    f.write(f"Top 1 heavy_rmsd < {threshold}: {top_1_rmsd_below_threshold / N * 100}%\n")
 
-    f.write(f"Top {k} correctness: {top_k_correctness / N * 100}%")
-    f.write(f"Top {k} heavy_rmsd < {threshold}: {top_k_rmsd_below_threshold / N * 100}%")
+    f.write(f"Top {k} correctness: {top_k_correctness / N * 100}%\n")
+    f.write(f"Top {k} heavy_rmsd < {threshold}: {top_k_rmsd_below_threshold / N * 100}%\n")
 
-    f.write(f"Top 1 median RMSD: {np.median(top_1_rmsds)}")
-    f.write(f"Top {k} median RMSD: {np.median(top_k_rmsds)}")
+    f.write(f"Top 1 median RMSD: {np.median(top_1_rmsds)}\n")
+    f.write(f"Top {k} median RMSD: {np.median(top_k_rmsds)}\n")
 
 
 with open(path / 'all_results.pkl', 'wb') as f:
