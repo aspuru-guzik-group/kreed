@@ -6,14 +6,16 @@
 #SBATCH --mem=32GB
 #SBATCH --partition=rtx6000,a40
 #SBATCH --qos=normal
-#SBATCH --array=10-250%32
+#SBATCH --array=100-550%64
 #SBATCH --output=slurm/eval_array/p0_%A_%a.out
 #SBATCH -c 8
+
+mkdir -p slurm/eval_array
 
 source ~/.bashrc
 conda activate egnn
 
-ROOT=/h/austin/geom_chunks
+ROOT=~/geom_chunks
 CKPT=final_checkpoints/geom.ckpt
 NSAMPLES=10
 K=5

@@ -177,7 +177,7 @@ import numpy as np
 from src.metrics import evaluate_prediction
 
 
-pbar = tqdm(zip(rebatched, dataset))
+pbar = tqdm(zip(rebatched, dataset), disable=None)
 all_results = []
 all_aligned_coords = []
 for sample_coords, G_true in pbar:
