@@ -6,7 +6,7 @@
 #SBATCH --mem=32GB
 #SBATCH --partition=rtx6000,a40
 #SBATCH --qos=normal
-#SBATCH --array=100-550%64
+#SBATCH --array=550-1000%64
 #SBATCH --output=slurm/eval_array/p10_%A_%a.out
 #SBATCH -c 8
 
