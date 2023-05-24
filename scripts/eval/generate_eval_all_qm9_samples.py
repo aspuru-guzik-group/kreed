@@ -36,6 +36,7 @@ import pickle
 from torch.utils.data import Dataset, DataLoader
 from src import chem
 import torch
+from src.chem import Molecule
 
 from pathlib import Path
 path = Path(directory)
@@ -108,14 +109,15 @@ loader = DataLoader(
 
 progress = 0
 for M in tqdm(loader):
-
+    print(f"{progress} / {len(loader)}")
+    M = Molecule(**{k: v.to(torch.device("cuda")) for k, v in M._asdict().items()})
+    
     sample = model.ema.ema_model.sample(M)
     samples = sample.cpu().unbatch()
     for s in samples:
         all_sample_coords.extend(s.coords.numpy())
 
     all_cond_masks.extend(M.cond_mask.cpu().numpy())
-    print(f"{progress} / {len(loader)}")
 
 import numpy as np
 all_sample_coords = np.array(all_sample_coords)
