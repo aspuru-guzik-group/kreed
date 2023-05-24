@@ -87,7 +87,7 @@ class InferenceDataset(Dataset):
         return len(self.examples)
     
     def __getitem__(self, idx):
-        return self.examples[idx].to('cuda:0')
+        return self.examples[idx]  # .to('cuda:0')
 
 
 all_sample_coords = []
@@ -103,8 +103,9 @@ loader = DataLoader(
     batch_size=B,
     shuffle=False,
     drop_last=False,
-    num_workers=0,
+    num_workers=8,
     collate_fn=collate_fn,
+    pin_memory=True,
 )
 
 progress = 0
