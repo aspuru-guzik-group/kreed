@@ -106,7 +106,7 @@ loader = DataLoader(
     collate_fn=collate_fn,
 )
 
-
+progress = 0
 for M in tqdm(loader):
 
     sample = model.ema.ema_model.sample(M)
@@ -115,6 +115,7 @@ for M in tqdm(loader):
         all_sample_coords.extend(s.coords.numpy())
 
     all_cond_masks.extend(M.cond_mask.cpu().numpy())
+    print(f"{progress} / {len(loader)}")
 
 import numpy as np
 all_sample_coords = np.array(all_sample_coords)
