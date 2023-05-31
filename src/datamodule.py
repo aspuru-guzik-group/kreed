@@ -75,15 +75,12 @@ class ConformerDataset(Dataset):
         geom_id = torch.full([n, 1], geom_id, dtype=torch.long)
 
         # Wrapper
-        M = chem.Molecule(
+        return chem.Molecule(
             graph=G,
             coords=coords, atom_nums=atom_nums, masses=masses, masses_normalized=masses_normalized,
             cond_labels=cond_labels, cond_mask=cond_mask,
             moments=moments, id=geom_id,
         )
-
-        # Convert to DGL to take advantage of DGL batching
-        return chem.Molecule.to_dgl(M)
 
 
 class ConformerDatamodule(pl.LightningDataModule):
@@ -176,10 +173,6 @@ class ConformerDatamodule(pl.LightningDataModule):
             num_workers=self.num_workers,
             drop_last=drop_last,
             worker_init_fn=pl_worker_init_function,
-            collate_fn=self._collate_fn,
+            collate_fn=chem.Molecule.collate,
             pin_memory=True,
         )
-
-    def _collate_fn(self, items):
-        G = self.dgl_collate(items)
-        return chem.Molecule.from_dgl(G)

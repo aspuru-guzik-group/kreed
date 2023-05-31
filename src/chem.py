@@ -6,6 +6,7 @@ import torch
 from rdkit import Chem
 from rdkit.Chem import rdDetermineBonds
 from rdkit.Chem.rdchem import GetPeriodicTable
+
 from src import kraitchman
 
 PTABLE = GetPeriodicTable()
@@ -17,18 +18,27 @@ def atom_masses_from_nums(atom_nums):
     return ATOM_MASSES.to(atom_nums.device)[atom_nums]
 
 
+_dgl_collate = dgl.dataloading.GraphCollator().collate
+
 _Molecule = collections.namedtuple(
     "_Molecule",
     [
         "graph",
         "coords", "atom_nums", "masses", "masses_normalized",
         "cond_labels", "cond_mask",
-        "moments", "id"
+        "moments", "id",
     ],
 )
 
 
 class Molecule(_Molecule):
+
+    def replace(self, **kwargs):
+        return self._replace(**kwargs)
+
+    # =============
+    # DGL Utilities
+    # =============
 
     @classmethod
     def from_dgl(cls, G):
@@ -45,10 +55,6 @@ class Molecule(_Molecule):
             if field != "graph":
                 G.ndata[field] = val
         return G
-
-    # =============
-    # DGL Utilities
-    # =============
 
     def broadcast(self, x):
         return dgl.broadcast_nodes(self.graph, x)
@@ -92,6 +98,14 @@ class Molecule(_Molecule):
     # Properties
     # ==========
 
+    @classmethod
+    def collate(cls, molecules):
+        G = _dgl_collate([Molecule.to_dgl(M) for M in molecules])
+        return Molecule.from_dgl(G)
+
+    def unbatch(self):
+        return [Molecule.from_dgl(G) for G in dgl.unbatch(Molecule.to_dgl(self))]
+
     @property
     def batched(self):
         return self.batch_size > 1
@@ -110,12 +124,6 @@ class Molecule(_Molecule):
 
     def cpu(self):
         return self._replace(**{field: x.cpu() for field, x in self._asdict().items()})
-
-    def unbatch(self):
-        return [Molecule.from_dgl(G) for G in dgl.unbatch(Molecule.to_dgl(self))]
-
-    def replace(self, **kwargs):
-        return self._replace(**kwargs)
 
     @property
     def id_as_int(self):
