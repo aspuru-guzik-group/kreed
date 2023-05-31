@@ -8,6 +8,7 @@ import tqdm
 import wandb
 from pytorch_lightning.loggers.wandb import WandbLogger
 
+from src import utils
 from src.diffusion.ddpm import EquivariantDDPM, EquivariantDDPMConfig
 from src.metrics import evaluate_prediction
 from src.modules import EMA
@@ -113,11 +114,8 @@ class LitEquivariantDDPM(pl.LightningModule):
     def _step(self, M, split, batch_idx):
         hp = self.hparams
 
-        # Dropout on conditioning labels
-        if hp.pdropout_cond > 0:
-            dropout_mask = (torch.rand_like(M.coords) < hp.pdropout_cond)
-            cond_mask = M.cond_mask & (~dropout_mask)
-            M = M.replace(cond_mask=cond_mask, cond_labels=torch.where(cond_mask, M.cond_labels, 0.0))
+        # Dropout conditioning labels
+        M = utils.dropout_unsigned_coords(M, prange=hp.pdropout_cond)
 
         if split == "train":
             loss = self.edm.simple_losses(M, puncond=hp.puncond).mean()
