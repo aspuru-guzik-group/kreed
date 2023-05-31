@@ -13,6 +13,6 @@ def zeroed_com(M, x, orthogonal=False):
 
 @torch.no_grad()
 def assert_zeroed_com(M, x):
-    coms = M.sum_pool(M.masses_normalized * x, broadcast=True)
+    coms = M.sum_pool(M.masses_normalized * x)
     error = coms.abs().max().item() / (x.abs().max().item() + 1e-5)
     assert error < 1e-4, error
