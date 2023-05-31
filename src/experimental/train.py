@@ -5,7 +5,6 @@ from typing import List, Optional
 import pydantic_cli
 import pytorch_lightning as pl
 import torch
-import wandb
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint, ModelSummary
 from pytorch_lightning.loggers import WandbLogger
 
@@ -88,10 +87,6 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
     pl.seed_everything(cfg.seed)
 
     # Make directories
-    root = pathlib.Path(__file__).parents[2]
-    log_dir = root / "logs"
-    log_dir.mkdir(exist_ok=True)
-
     ckpt_dir = pathlib.Path(cfg.checkpoint_dir)
     if cfg.wandb_run_id is not None:
         ckpt_dir = ckpt_dir / cfg.wandb_run_id
