@@ -87,6 +87,7 @@ class EquivariantDDPM(nn.Module):
         cfg = self.config
 
         if puncond > 0:
+            assert False  # TODO: remove later, just here as a temporary sanity assert
             uncond_mask = torch.rand([M.batch_size, 1]).to(M.coords) <= puncond
             uncond_mask = M.broadcast(uncond_mask)
             M = M.replace(
