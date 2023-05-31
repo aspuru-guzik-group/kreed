@@ -97,6 +97,7 @@ class ConformerDatamodule(pl.LightningDataModule):
         tol,
         num_workers=0,
         distributed=False,
+        lowest_energy_only=False,
     ):
         super().__init__()
 
@@ -105,7 +106,6 @@ class ConformerDatamodule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.distributed = distributed
-        self.tol = tol
 
         # Load data
         data_dir = pathlib.Path(__file__).parents[1] / "data" / dataset / "processed"
@@ -137,7 +137,11 @@ class ConformerDatamodule(pl.LightningDataModule):
         for split, D_split in splits.items():
             conformations = []
             for mol_conformers in D_split:
-                conformations.extend(mol_conformers)
+                if lowest_energy_only:
+                    # Preprocessing orders the conformers in a group by ascending energy
+                    conformations.append(mol_conformers[0])
+                else:
+                    conformations.extend(mol_conformers)
             datasets[split] = ConformerDataset(conformations, tol=tol)
         self.datasets = datasets
 
