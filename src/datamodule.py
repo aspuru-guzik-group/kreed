@@ -97,7 +97,7 @@ class ConformerDatamodule(pl.LightningDataModule):
         tol,
         num_workers=0,
         distributed=False,
-        lowest_energy_only=False,
+        only_lowest_energy_conformers=False,
     ):
         super().__init__()
 
@@ -137,7 +137,7 @@ class ConformerDatamodule(pl.LightningDataModule):
         for split, D_split in splits.items():
             conformations = []
             for mol_conformers in D_split:
-                if lowest_energy_only:
+                if only_lowest_energy_conformers:
                     # Preprocessing orders the conformers in a group by ascending energy
                     conformations.append(mol_conformers[0])
                 else:
