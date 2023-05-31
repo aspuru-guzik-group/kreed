@@ -191,11 +191,6 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
     ckpt_path = str(ckpt_path) if ckpt_path.exists() else None
     trainer.fit(model=ddpm, datamodule=data, ckpt_path=ckpt_path)
 
-    if cfg.wandb and (ddpm.global_rank == 0):
-        for callback in ckpt_callbacks:
-            logger._scan_and_log_checkpoints(callback)
-        wandb.finish()
-
     return 0
 
 
