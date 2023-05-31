@@ -7,8 +7,6 @@ from rdkit import Chem
 from rdkit.Chem import rdDetermineBonds
 from rdkit.Chem.rdchem import GetPeriodicTable
 
-from src import kraitchman
-
 PTABLE = GetPeriodicTable()
 ATOM_MASSES = torch.tensor([0] + [PTABLE.GetMostCommonIsotopeMass(z) for z in range(1, 119)], dtype=torch.float32)
 ISOTOPICALLY_ABUNDANT_ATOMS = torch.tensor([5, 6, 7, 8, 14, 16, 17, 35, 80], dtype=torch.long)
