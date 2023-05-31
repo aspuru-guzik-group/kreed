@@ -88,12 +88,6 @@ class Molecule(_Molecule):
         rdDetermineBonds.DetermineConnectivity(mol)
         return Chem.MolToSmiles(mol)
 
-    def transform(self, transform):
-        assert not self.batched
-        kwargs = self._asdict()
-        kwargs['coords'] = kraitchman.rotated_to_principal_axes(self.coords, self.masses, False) @ transform
-        return Molecule(**kwargs)
-
     # ==========
     # Properties
     # ==========
