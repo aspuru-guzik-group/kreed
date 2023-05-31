@@ -81,25 +81,6 @@ class Molecule(_Molecule):
         mol = Chem.MolFromXYZBlock(self.xyzfile())
         rdDetermineBonds.DetermineConnectivity(mol)
         return Chem.MolToSmiles(mol)
-    
-    def show(self):
-        assert not self.batched
-        import py3Dmol
-        view = py3Dmol.view(width=400, height=400)
-        view.addModel(self.xyzfile(), 'xyz')
-        view.setStyle({'sphere':{'scale': .5}})
-        # view.setBackgroundColor('0xeeeeee')
-        view.zoomTo()
-        view.show()
-    
-    def remove_hydrogens(self):
-        assert not self.batched
-        mask = self.atom_nums.squeeze(-1) != 1
-        kwargs = {"graph": self.graph.subgraph(mask, store_ids=False)}
-        for field in self._fields:
-            if field != "graph":
-                kwargs[field] = self._asdict()[field][mask]
-        return Molecule(**kwargs)
 
     def transform(self, transform):
         assert not self.batched
