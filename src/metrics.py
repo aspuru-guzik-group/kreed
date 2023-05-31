@@ -28,7 +28,6 @@ TRANSFORMS = _build_transforms_cache()
 
 
 def coord_rmse(atom_nums, coords_pred, coords_true):
-
     transformed_coords_preds = einops.einsum(
         TRANSFORMS.to(coords_pred),
         coords_pred,
@@ -51,64 +50,55 @@ def coord_rmse(atom_nums, coords_pred, coords_true):
     rmses = torch.tensor(rmses).to(coords_pred)
 
     idx = rmses.argmin()
-    return {
-        "coord_rmse": rmses[idx].sqrt().item(),
-        "transform": TRANSFORMS[idx],
-    }
-
-
-def cond_rmses(M_pred, moments):
-    # assume M_pred has been diagonalized already
-
-    cond_errors = torch.square(M_pred.coords.abs() - M_pred.cond_labels)
-    cond_errors = torch.where(M_pred.cond_mask, cond_errors, 0.0)
-    moments_errors = torch.square(moments - M_pred.moments)
-
-    return {
-        "unsigned_coords_rmse": cond_errors.sum().sqrt().item(),
-        "moments_rmse": moments_errors.sum().sqrt().item(),
-    }
+    return rmses[idx].sqrt().item(), transformed_coords_preds[idx]
 
 
 def connectivity_correctness(M_pred, M_true):
     try:
         smiles_pred = M_pred.smiles()
         smiles_true = M_true.smiles()
-        result = float(smiles_pred == smiles_true)
+        return float(smiles_pred == smiles_true)
     except:
-        result = 0.0
-    return {"correctness": result}
+        return 0.0
 
 
 @torch.no_grad()
-def evaluate_prediction(M_pred, M_true):
-    # assume M_true has been diagonalized already
+def evaluate_prediction(M_pred, M_true, return_aligned_mol=False):
     atom_nums = M_pred.atom_nums  # (N 1)
     coords_pred, moments_pred = kraitchman.rotated_to_principal_axes(M_pred.coords, M_pred.masses)
-    # coords_true, moments_true = kraitchman.rotated_to_principal_axes(M_true.coords, M_true.masses)
-    coords_true = M_true.coords
+    coords_true, moments_true = kraitchman.rotated_to_principal_axes(M_true.coords, M_true.masses)
 
+    # Deviation from conditioning information
     cond_errors = torch.square(coords_pred.abs() - M_true.cond_labels)
-    cond_errors = torch.where(M_pred.cond_mask, cond_errors, 0.0)
+    cond_errors = torch.where(M_true.cond_mask, cond_errors, 0.0)
     moments_errors = torch.square(moments_pred - M_true.moments[0])
+    assert moments_errors.numel() == 3
 
-    out = coord_rmse(atom_nums=atom_nums, coords_pred=coords_pred, coords_true=coords_true)
+    # Deviation from inferred molecular graph
+    correctness = connectivity_correctness(M_pred=M_pred, M_true=M_true)
 
-    mask = atom_nums.squeeze(-1) != 1
-    atom_nums_no_H = atom_nums[mask]
-    coords_pred_no_H = coords_pred[mask]
-    coords_true_no_H = coords_true[mask]
+    # RMSE on aligned coordinates
+    rmse, _ = coord_rmse(
+        atom_nums=atom_nums,
+        coords_pred=coords_pred,
+        coords_true=coords_true,
+    )
 
-    # the alignment is done only on the heavy atoms
-    # because the hydrogens are not as important
-    out_no_H = coord_rmse(atom_nums_no_H, coords_pred_no_H, coords_true_no_H)
-    
-    # aligned_coords_pred = coords_pred @ out_no_H['transform']
-    return {
+    # RMSE on aligned heavy atom coordinates because hydrogens are not as important
+    heavy_mask = (atom_nums.squeeze(-1) != 1)
+    heavy_rmse, aligned_coords = coord_rmse(
+        atom_nums=atom_nums[heavy_mask],
+        coords_pred=coords_pred[heavy_mask],
+        coords_true=coords_true[heavy_mask],
+    )
+
+    metrics = {
         "unsigned_coords_rmse": cond_errors.sum().sqrt().item(),
         "moments_rmse": moments_errors.sum().sqrt().item(),
-        "coord_rmse": out["coord_rmse"],
-        "heavy_coord_rmse": out_no_H["coord_rmse"],
-        "transform": out_no_H["transform"],
-        **connectivity_correctness(M_pred=M_pred, M_true=M_true),
+        "correctness": correctness,
+        "coord_rmse": rmse,
+        "heavy_coord_rmse": heavy_rmse,
     }
+
+    M_aligned = M_pred.replace(coords=aligned_coords)
+    return (metrics, M_aligned) if return_aligned_mol else metrics

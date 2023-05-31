@@ -152,8 +152,7 @@ class LitEquivariantDDPM(pl.LightningModule):
         metrics = collections.defaultdict(list)
 
         for i in tqdm.trange(M.batch_size, desc=f"Evaluating {split} samples", leave=False):
-            sample_metrics = evaluate_prediction(M_pred=M_preds[i], M_true=M_trues[i])
-            transform = sample_metrics.pop("transform")
+            sample_metrics, M_aligned = evaluate_prediction(M_pred=M_preds[i], M_true=M_trues[i], return_aligned_mol=True)
             for k, v in sample_metrics.items():
                 metrics[k].append(v)
 
@@ -167,7 +166,7 @@ class LitEquivariantDDPM(pl.LightningModule):
 
             wandb.log({
                 f"{split}_samples/true_{i}": wandb.Html(html_render_molecule(M_trues[i])),
-                f"{split}_samples/pred_{i}": wandb.Html(html_render_molecule(M_preds[i].transform(transform))),
+                f"{split}_samples/pred_{i}": wandb.Html(html_render_molecule(M_aligned)),
                 f"{split}_samples/anim_pred_{i}": wandb.Html(html_render_trajectory(M_pred_traj)),
                 "epoch": self.current_epoch,
             })
