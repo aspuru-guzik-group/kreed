@@ -39,11 +39,18 @@ TRAIN_COMMAND_TEMPLATE = (
 )
 
 SWEEP_GRID = [
-    [("eps", "--parameterization=eps"), ("x", "--parameterization=x")],
-    [("e3", "--egnn_equivariance=e3"), ("rfl", "--egnn_equivariance=ref")],
-    [("rlx", ""), ("", "--disable_egnn_relaxed")],
-    [("ortho", ""), ("trnsl", "--disable_project_sample_orthogonally")],
+    # [("eps", "--parameterization=eps"), ("x", "--parameterization=x")],
+    # [("e3", "--egnn_equivariance=e3"), ("rfl", "--egnn_equivariance=ref")],
+    # [("rlx", ""), ("", "--disable_egnn_relaxed")],
+    # [("ortho", ""), ("trnsl", "--disable_project_sample_orthogonally")],
     # ["--norm_type=layer", "--norm_type=none --disable_norm_adaptively"],
+    [
+        ("edm-e3", "--architecture=edm --egnn_equivariance=e3 --disable_egnn_relaxed"),
+        ("edm-ref", "--architecture=edm --disable_egnn_relaxed"),
+        ("edm-ref-rlx", "--architecture=edm"),
+        ("tf-ref-rlx", "--disable_norm_adaptively"),
+        ("tf-ref-rlx-ada", ""),
+    ]
 ]
 
 

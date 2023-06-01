@@ -20,7 +20,7 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
     # Model Fields
     # ============
 
-    architecture: Literal["dummy", "edm", "transformer"] = "edm"
+    architecture: Literal["dummy", "edm", "transformer"] = "transformer"
     parameterization: Literal["eps", "x"] = "eps"
     timestep_embedding: Literal["none", "positional"] = "positional"
 

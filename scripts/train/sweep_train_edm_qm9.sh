@@ -7,7 +7,7 @@
 #SBATCH --partition=rtx6000
 #SBATCH --qos=normal
 #SBATCH --export=ALL
-#SBATCH --array=0-16%16
+#SBATCH --array=0-5%5
 #SBATCH --output=logs/array-%A_%a.out
 #SBATCH -c 8
 
@@ -16,7 +16,7 @@ export CUDA_PATH=/pkgs/cuda-11.8/
 export CUDNN_PATH=/pkgs/cudnn-11.7-v8.5.0.96/
 
 source ~/.bashrc
-conda activate egnn
+conda activate edm
 
 IFS=$'\n' read -d '' -r -a lines < sweep_train_edm_qm9_jobs
 cd ../..
