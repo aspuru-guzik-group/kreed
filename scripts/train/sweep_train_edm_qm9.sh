@@ -16,7 +16,7 @@ export CUDA_PATH=/pkgs/cuda-11.8/
 export CUDNN_PATH=/pkgs/cudnn-11.7-v8.5.0.96/
 
 source ~/.bashrc
-conda activate edm
+conda activate egnn
 
 IFS=$'\n' read -d '' -r -a lines < sweep_train_edm_qm9_jobs
 cd ../..
