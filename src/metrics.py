@@ -50,7 +50,7 @@ def coord_rmse(atom_nums, coords_pred, coords_true):
     rmses = torch.tensor(rmses).to(coords_pred)
 
     idx = rmses.argmin()
-    return rmses[idx].sqrt().item(), transformed_coords_preds[idx]
+    return rmses[idx].sqrt().item(), transformed_coords_preds[idx, :, 0, :]
 
 
 def connectivity_correctness(M_pred, M_true):
