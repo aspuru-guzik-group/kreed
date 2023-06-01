@@ -100,7 +100,7 @@ class EquivariantBlock(nn.Module):
         f = torch.cat(f, dim=-1)
 
         msg = dict()
-        msg["msg_x"] = self.coord_mlp(f) * diffs / (torch.sqrt(radials + 1e-5) + 1.0)
+        msg["msg_x"] = self.coord_mlp(f) * diffs / (radials + 1.0)
 
         if self.update_hidden:
             msg_h = self.edge_mlp(f)
@@ -189,7 +189,7 @@ class EquivariantTransformerBlock(nn.Module):
         m = self.edge_mlp(f)
 
         msg = dict()
-        msg["msg_x"] = self.coord_mlp(m) * diffs / (torch.sqrt(radials + 1e-5) + 1.0)
+        msg["msg_x"] = self.coord_mlp(m) * diffs / (radials + 1.0)
 
         if self.update_hidden:
             msg["msg_attn"] = einops.rearrange(self.att_mlp(m), "e h -> e h 1")
