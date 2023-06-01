@@ -28,6 +28,7 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
     temb_features: int = 128
     cond_features: int = 128
     hidden_features: int = 256
+    inner_features: int = 320
 
     num_layers: int = 6
     num_attn_heads: int = 8
@@ -64,6 +65,7 @@ class EquivariantDDPM(nn.Module):
         elif cfg.architecture == "edm":
             cfg.timestep_embedding = "none"
             cfg.cond_features = None
+            cfg.inner_features = None
             cfg.num_attn_heads = None
             cfg.norm_adaptively = None
             self.dynamics = EDMDynamics(**dict(cfg))

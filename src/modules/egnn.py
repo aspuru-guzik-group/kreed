@@ -138,6 +138,7 @@ class EquivariantTransformerBlock(nn.Module):
         relaxed,
         dim,
         hidden_features,
+        inner_features,
         edge_features,
         adaptive_features,
         num_heads,
@@ -153,7 +154,6 @@ class EquivariantTransformerBlock(nn.Module):
         self.num_heads = num_heads
         self.update_hidden = update_hidden
 
-        inner_features = int(1.25 * hidden_features)
         message_features = (2 * hidden_features) + edge_features
         message_features += distance_features(dim, equivariance, relaxed)
 
