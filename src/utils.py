@@ -18,15 +18,20 @@ def assert_zeroed_com(M, x):
     assert error < 1e-4, error
 
 
-def dropout_unsigned_coords(M, prange):
-    if isinstance(prange, float):
-        p = torch.full([M.batch_size, 1], prange)
-    else:
-        assert len(prange) == 2
-        assert 0 <= prange[0] <= prange[1]
-        p = (prange[1] - prange[0]) * torch.rand([M.batch_size, 1]) + prange[0]
-    p = p.to(M.coords)
+def dropout_unsigned_coords(M, dropout_mask=None, prange=None):
+    if prange is None:
+        assert dropout_mask is not None
 
-    dropout_mask = (torch.rand_like(M.coords) < M.broadcast(p))
+    else:
+        assert dropout_mask is None
+        if isinstance(prange, float):
+            p = torch.full([M.batch_size, 1], prange)
+        else:
+            assert len(prange) == 2
+            assert 0 <= prange[0] <= prange[1]
+            p = (prange[1] - prange[0]) * torch.rand([M.batch_size, 1]) + prange[0]
+        p = p.to(M.coords)
+        dropout_mask = (torch.rand_like(M.coords) < M.broadcast(p))
+
     cond_mask = M.cond_mask & (~dropout_mask)
     return M.replace(cond_mask=cond_mask, cond_labels=torch.where(cond_mask, M.cond_labels, 0.0))
