@@ -179,8 +179,8 @@ class EquivariantTransformerBlock(nn.Module):
                 nn.Linear(inner_features, hidden_features),
             )
 
-        self.norm_agg = LayerNorm(hidden_features, adaptive_features)
-        self.norm_ff = LayerNorm(hidden_features, adaptive_features)
+            self.norm_agg = LayerNorm(hidden_features, adaptive_features)
+            self.norm_ff = LayerNorm(hidden_features, adaptive_features)
 
     def message(self, edges):
         D, (diffs, radials) = distances(edges, "x", self.equivariance, self.relaxed, aux=True)
