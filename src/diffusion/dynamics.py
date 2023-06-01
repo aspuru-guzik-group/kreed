@@ -167,9 +167,6 @@ class TransformerDynamics(nn.Module):
         coords = M.coords
         cond = None if (self.proj_cond is None) else self.proj_cond(f)
 
-        # Add self-loops
-        M = M.replace(graph=dgl.add_self_loop(M.graph))
-
         # Get base edge features
         with torch.no_grad():
             M.graph.ndata["x"] = coords
