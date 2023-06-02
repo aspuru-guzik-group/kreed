@@ -9,7 +9,7 @@ import torch.nn.functional as F
 import tqdm
 
 from src import utils
-from src.diffusion.dynamics import DummyDynamics, EquivariantDynamics
+from src.diffusion.dynamics import DummyDynamics, EDMDynamics, TransformerDynamics
 from src.modules import NoiseSchedule, PositionalEmbedding
 
 
@@ -20,7 +20,7 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
     # Model Fields
     # ============
 
-    architecture: Literal["dummy", "edm"] = "edm"
+    architecture: Literal["dummy", "edm", "transformer"] = "transformer"
     parameterization: Literal["eps", "x"] = "eps"
     timestep_embedding: Literal["none", "positional"] = "positional"
 
@@ -28,10 +28,10 @@ class EquivariantDDPMConfig(pydantic.BaseModel):
     temb_features: int = 128
     cond_features: int = 128
     hidden_features: int = 256
+    inner_features: int = 320
 
     num_layers: int = 6
-    norm_coords: Literal["se3", "none"] = "none"
-    norm_hidden: Literal["layer", "graph", "none"] = "layer"
+    num_attn_heads: int = 8
     norm_adaptively: bool = True
     act: Literal["silu", "gelu"] = "silu"
 
@@ -60,18 +60,25 @@ class EquivariantDDPM(nn.Module):
         self.config = config
         cfg = config
 
+        if cfg.architecture == "dummy":
+            self.dynamics = DummyDynamics()  # for debugging
+        elif cfg.architecture == "edm":
+            cfg.timestep_embedding = "none"
+            cfg.cond_features = None
+            cfg.inner_features = None
+            cfg.num_attn_heads = None
+            cfg.norm_adaptively = None
+            self.dynamics = EDMDynamics(**dict(cfg))
+        elif cfg.architecture == "transformer":
+            self.dynamics = TransformerDynamics(**dict(cfg))
+        else:
+            raise ValueError()
+
         if cfg.timestep_embedding == "positional":
             self.embed_timestep = PositionalEmbedding(cfg.temb_features)
         else:
             cfg.temb_features = 1
             self.embed_timestep = None
-
-        if cfg.architecture == "dummy":
-            self.dynamics = DummyDynamics()  # for debugging
-        elif cfg.architecture == "edm":
-            self.dynamics = EquivariantDynamics(**dict(cfg))
-        else:
-            raise ValueError()
 
         self.T = cfg.timesteps
         self.gamma = NoiseSchedule(cfg.noise_shape, timesteps=self.T, precision=cfg.noise_precision)
