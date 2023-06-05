@@ -11,10 +11,6 @@
 #SBATCH --output=logs/array-%A_%a.out
 #SBATCH -c 8
 
-export LD_LIBRARY_PATH=/pkgs/cuda-11.8/lib64:/pkgs/cudnn-11.7-v8.5.0.96/lib64:$LD_LIBRARY_PATH
-export CUDA_PATH=/pkgs/cuda-11.8/
-export CUDNN_PATH=/pkgs/cudnn-11.7-v8.5.0.96/
-
 source ~/.bashrc
 conda activate egnn
 
