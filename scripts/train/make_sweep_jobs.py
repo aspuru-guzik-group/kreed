@@ -45,16 +45,13 @@ SWEEP_GRID = [
     # [("ortho", ""), ("trnsl", "--disable_project_sample_orthogonally")],
     # ["--norm_type=layer", "--norm_type=none --disable_norm_adaptively"],
     [
-        # ("edm-e3", "--architecture=edm --egnn_equivariance=e3 --disable_egnn_relaxed"),
-        # ("edm-ref", "--architecture=edm --disable_egnn_relaxed"),
-        # ("edm-ref-rlx", "--architecture=edm"),
-        # ("tf-ref-rlx", "--disable_norm_adaptively"),
-        # ("tf-ref-rlx-ada", ""),
+        ("edm-e3", "--architecture=edm --egnn_equivariance=e3 --disable_egnn_relaxed"),
+        ("edm-ref", "--architecture=edm --disable_egnn_relaxed"),
         ("edm-e3-lowlr", "--architecture=edm --egnn_equivariance=e3 --disable_egnn_relaxed --lr=0.0001"),
         ("edm-ref-lowlr", "--architecture=edm --disable_egnn_relaxed --lr=0.0001"),
-        ("edm-ref-rlx-lowlr", "--architecture=edm --lr=0.0001"),
         ("tf-ref", "--disable_norm_adaptively --disable_egnn_relaxed"),
-        # ("tf-ref-rlx-ada", ""),
+        ("tf-ref-rlx", "--disable_norm_adaptively"),
+        ("tf-ref-rlx-ada", ""),
     ]
 ]
 
