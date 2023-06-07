@@ -5,7 +5,6 @@ import einops
 import numpy as np
 import pytorch_lightning as pl
 import torch
-from lightning_fabric.utilities.seed import pl_worker_init_function
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
 
@@ -172,7 +171,6 @@ class ConformerDatamodule(pl.LightningDataModule):
             sampler=sampler,
             num_workers=self.num_workers,
             drop_last=drop_last,
-            worker_init_fn=pl_worker_init_function,
             collate_fn=chem.Molecule.collate,
             pin_memory=True,
         )

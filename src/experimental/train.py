@@ -84,7 +84,7 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
     cfg = config
 
     # Seeding
-    pl.seed_everything(cfg.seed)
+    pl.seed_everything(cfg.seed, workers=True)
 
     # Make directories
     ckpt_dir = pathlib.Path(cfg.checkpoint_dir)
