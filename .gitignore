@@ -1,5 +1,6 @@
 old/
 stuff.txt
+_*.ipynb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -144,7 +145,6 @@ logs/
 test_load.ipynb
 animate.ipynb
 
-*.ipynb
 compare1
 compare2
 src/old_kraitchman.py
