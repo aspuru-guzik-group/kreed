@@ -21,8 +21,7 @@ cd ../..
 
 srun --nodes=2 --tasks-per-node=4  python -m src.experimental.train \
   --accelerator=gpu --num_nodes=2  --devices=4 \
-  --batch_size=16 --num_workers=8 --dataset=geom \
-  --max_epochs=100 --check_samples_every_n_epochs=1 --samples_assess_n_batches=10 --samples_visualize_n_mols=0 \
-  --hidden_features=512 --inner_features=512 \
-  --wd=0.01 \
+  --batch_size=64 --num_workers=8 --dataset=geom \
+  --max_epochs=100 --check_samples_every_n_epochs=5 --samples_assess_n_batches=1 --samples_visualize_n_mols=0 \
+  --wd=0.001 --lr=0.0004 \
   --enable_wandb  --wandb_project=train_geom_large --wandb_run_id ${SLURM_JOB_ID} --checkpoint_dir /checkpoint/${USER}/${SLURM_JOB_ID}
