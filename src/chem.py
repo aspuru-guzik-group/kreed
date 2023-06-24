@@ -80,6 +80,15 @@ class Molecule(_Molecule):
             file += f"{PTABLE.GetElementSymbol(int(a))} {x:f} {y:f} {z:f}\n"
         return file
 
+    def show(self):
+        assert not self.batched
+        import py3Dmol
+        view = py3Dmol.view(width=400, height=400)
+        view.addModel(self.xyzfile(), 'xyz')
+        view.setStyle({'sphere':{'scale': .5}})
+        view.zoomTo()
+        view.show()
+
     def smiles(self):
         assert not self.batched
         mol = Chem.MolFromXYZBlock(self.xyzfile())
@@ -104,7 +113,10 @@ class Molecule(_Molecule):
 
     @property
     def batch_size(self):
-        return self.graph.batch_size
+        if self.graph is None:
+            return 0
+        else:
+            return self.graph.batch_size
 
     @property
     def num_atoms(self):

@@ -75,6 +75,7 @@ def evaluate_ddpm(config: EvaluateEquivariantDDPMConfig):
     ddpm = LitEquivariantDDPM.load_from_checkpoint(ckpt_path, map_location=device)
     ddpm = ddpm.ema.ema_model
     ddpm.eval()
+    ddpm.to(device)
 
     if cfg.debug:
         ddpm.T = 3
