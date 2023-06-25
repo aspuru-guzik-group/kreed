@@ -71,8 +71,8 @@ else:
     geom_train_dists = np.array(geom_train_dists)
     np.save('.geom_train_dists.npy', geom_train_dists)
 
-N = 30000
-rightbound = 100
+N = 60000
+rightbound = 200
 left_bins = np.linspace(0, rightbound, N)
 qm9_values, bin_edges = np.histogram(qm9_train_dists, bins=left_bins, density=True)
 geom_values, bin_edges = np.histogram(geom_train_dists, bins=left_bins, density=True)
