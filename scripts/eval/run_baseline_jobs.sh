@@ -12,4 +12,4 @@
 source ~/.bashrc
 conda activate egnn
 
-echo "$(sed -n ${SLURM_ARRAY_TASK_ID}p scripts/eval/baseline_jobs.txt)"
+eval "$(sed -n ${SLURM_ARRAY_TASK_ID}p scripts/eval/baseline_jobs.txt)"
