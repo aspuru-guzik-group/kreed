@@ -15,38 +15,38 @@ def make_baseline_jobs():
         array_jobs.write(f"parallel < {jobs}\n")
         with open(jobs, "w") as f:
             for i in range(qm9_chunks):
-                f.write(f"srun python -m src.experimental.evaluate_baseline --save_dir={save_dir} --split={split} --enable_save_samples_and_examples --num_chunks={qm9_chunks} --chunk_id={i} --dataset={dataset}\n")
+                f.write(f"python -m src.experimental.evaluate_baseline --save_dir={save_dir} --split={split} --enable_save_samples_and_examples --num_chunks={qm9_chunks} --chunk_id={i} --dataset={dataset}\n")
         
         jobs = jobs_fname + "_qm9_p1"
         array_jobs.write(f"parallel < {jobs}\n")
         with open(jobs, "w") as f:
             for i in range(qm9_chunks):
-                f.write(f"srun python -m src.experimental.evaluate_baseline --save_dir={save_dir} --split={split} --enable_save_samples_and_examples --num_chunks={qm9_chunks} --chunk_id={i} --dataset={dataset} {extra}\n")
+                f.write(f"python -m src.experimental.evaluate_baseline --save_dir={save_dir} --split={split} --enable_save_samples_and_examples --num_chunks={qm9_chunks} --chunk_id={i} --dataset={dataset} {extra}\n")
 
         dataset = "geom"
         jobs = jobs_fname + "_geom_p0_first"
         array_jobs.write(f"parallel < {jobs}\n")
         with open(jobs, "w") as f:
             for i in range(geom_chunks // 2):
-                f.write(f"srun python -m src.experimental.evaluate_baseline --save_dir={save_dir} --split={split} --enable_save_samples_and_examples --num_chunks={geom_chunks} --chunk_id={i} --dataset={dataset}\n")
+                f.write(f"python -m src.experimental.evaluate_baseline --save_dir={save_dir} --split={split} --enable_save_samples_and_examples --num_chunks={geom_chunks} --chunk_id={i} --dataset={dataset}\n")
         
         jobs = jobs_fname + "_geom_p0_second"
         array_jobs.write(f"parallel < {jobs}\n")
         with open(jobs, "w") as f:
             for i in range(geom_chunks // 2, geom_chunks):
-                f.write(f"srun python -m src.experimental.evaluate_baseline --save_dir={save_dir} --split={split} --enable_save_samples_and_examples --num_chunks={geom_chunks} --chunk_id={i} --dataset={dataset}\n")
+                f.write(f"python -m src.experimental.evaluate_baseline --save_dir={save_dir} --split={split} --enable_save_samples_and_examples --num_chunks={geom_chunks} --chunk_id={i} --dataset={dataset}\n")
         
         jobs = jobs_fname + "_geom_p1_first"
         array_jobs.write(f"parallel < {jobs}\n")
         with open(jobs, "w") as f:
             for i in range(geom_chunks // 2):
-                f.write(f"srun python -m src.experimental.evaluate_baseline --save_dir={save_dir} --split={split} --enable_save_samples_and_examples --num_chunks={geom_chunks} --chunk_id={i} --dataset={dataset} {extra}\n")
+                f.write(f"python -m src.experimental.evaluate_baseline --save_dir={save_dir} --split={split} --enable_save_samples_and_examples --num_chunks={geom_chunks} --chunk_id={i} --dataset={dataset} {extra}\n")
         
         jobs = jobs_fname + "_geom_p1_second"
         array_jobs.write(f"parallel < {jobs}\n")
         with open(jobs, "w") as f:
             for i in range(geom_chunks // 2, geom_chunks):
-                f.write(f"srun python -m src.experimental.evaluate_baseline --save_dir={save_dir} --split={split} --enable_save_samples_and_examples --num_chunks={geom_chunks} --chunk_id={i} --dataset={dataset} {extra}\n")
+                f.write(f"python -m src.experimental.evaluate_baseline --save_dir={save_dir} --split={split} --enable_save_samples_and_examples --num_chunks={geom_chunks} --chunk_id={i} --dataset={dataset} {extra}\n")
 
 if __name__ == "__main__":
     make_baseline_jobs()

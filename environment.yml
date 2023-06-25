@@ -387,4 +387,3 @@ dependencies:
       - lightning-lite==1.8.6
       - msgpack==1.0.4
       - py3dmol==2.0.1.post1
-prefix: /h/austin/mambaforge/envs/egnn
