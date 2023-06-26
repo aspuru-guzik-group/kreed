@@ -14,10 +14,6 @@ SLURM_TEMPLATE = (
 #SBATCH --output=logs/array-%A_%a.out
 #SBATCH -c 8
 
-export LD_LIBRARY_PATH=/pkgs/cuda-11.8/lib64:/pkgs/cudnn-11.7-v8.5.0.96/lib64:$LD_LIBRARY_PATH
-export CUDA_PATH=/pkgs/cuda-11.8/
-export CUDNN_PATH=/pkgs/cudnn-11.7-v8.5.0.96/
-
 source ~/.bashrc
 conda activate egnn
 
@@ -33,7 +29,7 @@ eval ${{lines[SLURM_ARRAY_TASK_ID]}} --wandb_run_id ${{SLURM_JOB_ID}} --checkpoi
 TRAIN_COMMAND_TEMPLATE = (
     "srun python -m src.experimental.train "
     "--accelerator=gpu --devices=1 --num_workers=8 "
-    "--dataset=qm9 --enable_wandb --wandb_project=sweep_architecture_train_qm9 "
+    "--dataset=qm9 --enable_wandb --wandb_project=sweep_architecture_train_qm9_uniform --pdropout_cond 0.0 1.0 "
     "--max_epochs=3000 "
     "--check_samples_every_n_epochs=200 --samples_assess_n_batches=10 --samples_visualize_n_mols=0"
 )
