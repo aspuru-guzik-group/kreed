@@ -30,7 +30,7 @@ TRAIN_COMMAND_TEMPLATE = (
     "srun python -m src.experimental.train "
     "--accelerator=gpu --devices=1 --num_workers=8 "
     "--dataset=qm9 --enable_wandb --wandb_project=sweep_architecture_train_qm9_uniform --pdropout_cond 0.0 1.0 "
-    "--max_epochs=3000 "
+    "--max_epochs=4000 "
     "--check_samples_every_n_epochs=200 --samples_assess_n_batches=10 --samples_visualize_n_mols=0"
 )
 
