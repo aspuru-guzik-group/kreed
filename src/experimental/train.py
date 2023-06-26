@@ -138,9 +138,10 @@ def train_ddpm(config: TrainEquivariantDDPMConfig):
         ckpt_callbacks = [
             ModelCheckpoint(
                 dirpath=ckpt_dir,
-                filename="epoch={epoch}-rmse={val/coord_rmse:.5f}",
+                filename="epoch={epoch}-correct={val/correctness:.5f}",
                 auto_insert_metric_name=False,
-                monitor="val/coord_rmse",
+                monitor="val/correctness",
+                mode="max",
                 save_top_k=3,
                 verbose=True,
                 every_n_epochs=cfg.check_samples_every_n_epochs,
