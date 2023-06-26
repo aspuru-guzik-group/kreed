@@ -12,14 +12,12 @@ from lightning_fabric.utilities.seed import pl_worker_init_function
 from torch.utils.data import DataLoader, Subset
 
 from src import chem, utils
-from src.metrics import evaluate_prediction
 from src.datamodule import ConformerDatamodule
 from src.diffusion import LitEquivariantDDPM
 from src.experimental.train import TrainEquivariantDDPMConfig
+from src.metrics import evaluate_prediction
 
 assert TrainEquivariantDDPMConfig, "Needed for checkpoint loading!"
-
-torch.set_float32_matmul_precision("medium")
 
 
 class EvaluateEquivariantDDPMConfig(pydantic.BaseModel):
