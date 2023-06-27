@@ -84,7 +84,7 @@ def evaluate_prediction(M_pred, M_true, return_aligned_mol=False, keep_coords_pr
 
     moments_errors = torch.square(moments_pred - M_true.moments[0])
     assert moments_errors.numel() == 3
-    moments_rmse = moments_errors.sum().sqrt().item()
+    moments_rmse = moments_errors.sum().sqrt().item() / 3
 
     # Deviation from inferred molecular graph
     correctness = connectivity_correctness(M_pred=M_pred, M_true=M_true)
