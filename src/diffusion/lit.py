@@ -106,34 +106,38 @@ class LitEquivariantDDPM(pl.LightningModule):
         self.ema.update(self.edm)
 
     def training_step(self, batch, batch_idx):
-        return self._step(batch, split="train", batch_idx=batch_idx)
-
-    def validation_step(self, batch, batch_idx):
-        return self._step(batch, split="val", batch_idx=batch_idx)
-
-    def _step(self, M, split, batch_idx):
         hp = self.hparams
+        M = batch
 
         # Dropout conditioning labels
         M = utils.dropout_unsigned_coords(M, prange=hp.pdropout_cond)
 
-        if split == "train":
-            loss = self.edm.simple_losses(M, puncond=hp.puncond).mean()
-            self.log(f"{split}/loss", loss, batch_size=M.batch_size)
-
-        else:
-            # Visualize and assess some samples
-            if (
-                ((self.current_epoch + 1) % hp.check_samples_every_n_epochs == 0)
-                and (batch_idx < hp.samples_assess_n_batches)
-            ):
-                n = hp.samples_visualize_n_mols if (batch_idx == 0) else 0
-                self._assess_and_visualize_samples(M=M, split=split, n_visualize=n)
-
-            loss = self.ema.ema_model.nlls(M).mean()
-            self.log(f"{split}/nll", loss, batch_size=M.batch_size, sync_dist=hp.distributed)
-
+        # Compute loss
+        loss = self.edm.simple_losses(M, puncond=hp.puncond).mean()
+        self.log(f"train/loss", loss, batch_size=M.batch_size)
         return loss
+
+    def validation_step(self, batch, batch_idx):
+        hp = self.hparams
+        M = batch
+
+        # Dropout conditioning labels
+        nonC_mask = (M.atom_nums != 6)
+        M = utils.dropout_unsigned_coords(M, dropout_mask=nonC_mask)
+        M = utils.dropout_unsigned_coords(M, prange=0.1)
+
+        # Visualize and assess some samples
+        if (
+            ((self.current_epoch + 1) % hp.check_samples_every_n_epochs == 0)
+            and (batch_idx < hp.samples_assess_n_batches)
+        ):
+            n = hp.samples_visualize_n_mols if (batch_idx == 0) else 0
+            self._assess_and_visualize_samples(M=M, split="val", n_visualize=n)
+
+        # Compute NLL
+        nll = self.ema.ema_model.nlls(M).mean()
+        self.log(f"val/nll", nll, batch_size=M.batch_size, sync_dist=hp.distributed)
+        return nll
 
     @torch.no_grad()
     def _assess_and_visualize_samples(self, M, split, n_visualize):
