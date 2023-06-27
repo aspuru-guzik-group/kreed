@@ -66,12 +66,15 @@ def connectivity_correctness(M_pred, M_true):
 @torch.no_grad()
 def evaluate_prediction(M_pred, M_true, return_aligned_mol=False, keep_coords_pred=False):
     atom_nums = M_pred.atom_nums  # (N 1)
-    coords_pred, moments_pred = kraitchman.rotated_to_principal_axes(M_pred.coords, M_pred.masses)
-    if keep_coords_pred:
-        # keeping original coordinates because they should already be in the principal axes, but the predicted sample doesn't have cm = 0
-        # this also means that off-diagonals of inertia matrix are nonzero, and moments_rmse doesn't capture that
-        coords_pred = M_pred.coords
 
+    if keep_coords_pred:
+        # Keeping original coordinates because they should already be in the principal axes,
+        # but the predicted sample doesn't have CoM = 0. This also means that off-diagonals of
+        # inertia matrix are nonzero, and moments_rmse doesn't capture that.
+        coords_pred = M_pred.coords
+        _, moments_pred = kraitchman.rotated_to_principal_axes(M_pred.coords, M_pred.masses)
+    else:
+        coords_pred, moments_pred = kraitchman.rotated_to_principal_axes(M_pred.coords, M_pred.masses)
     coords_true = M_true.coords  # assumes M_true is already in principal axes, which it should be if it's from the datamodule
 
     # Deviation from conditioning information
@@ -93,12 +96,12 @@ def evaluate_prediction(M_pred, M_true, return_aligned_mol=False, keep_coords_pr
         coords_true=coords_true,
     )
 
+    # Correctness and RMSE on aligned heavy atom coordinates because hydrogens are not as important
     heavy_mask = (atom_nums.squeeze(-1) != 1)
     heavy_atom_nums = atom_nums[heavy_mask]
     heavy_M_pred = M_pred.replace(atom_nums=heavy_atom_nums, coords=coords_pred[heavy_mask])
     heavy_M_true = M_true.replace(atom_nums=heavy_atom_nums, coords=coords_true[heavy_mask])
 
-    # Correctness and RMSE on aligned heavy atom coordinates because hydrogens are not as important
     heavy_correctness = connectivity_correctness(M_pred=heavy_M_pred, M_true=heavy_M_true)
     heavy_rmse, transform = coord_rmse(
         atom_nums=heavy_atom_nums,
