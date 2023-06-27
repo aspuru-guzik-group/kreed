@@ -43,7 +43,7 @@ class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
     puncond: float = 0.0
     pdropout_cond: List[float] = (0.0, 0.5)
 
-    ema_decay: float = 0.9995
+    ema_decay: float = 0.999
     clip_grad_norm: bool = True
 
     # ================
