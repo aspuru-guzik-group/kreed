@@ -48,9 +48,10 @@ def coord_rmse(atom_nums, coords_pred, coords_true):
         row_ind, col_ind = scipy.optimize.linear_sum_assignment(cost)
         rmses.append(cost[row_ind, col_ind].sum())
     rmses = torch.tensor(rmses).to(coords_pred)
+    rmses = rmses.sqrt() / coords_pred.shape[0]
 
     idx = rmses.argmin()
-    return rmses[idx].sqrt().item(), TRANSFORMS[idx]
+    return rmses[idx].item(), TRANSFORMS[idx]
 
 
 def connectivity_correctness(M_pred, M_true):
@@ -61,6 +62,7 @@ def connectivity_correctness(M_pred, M_true):
     except:
         return 0.0
 
+
 @torch.no_grad()
 def evaluate_prediction(M_pred, M_true, return_aligned_mol=False, keep_coords_pred=False):
     atom_nums = M_pred.atom_nums  # (N 1)
@@ -70,13 +72,16 @@ def evaluate_prediction(M_pred, M_true, return_aligned_mol=False, keep_coords_pr
         # this also means that off-diagonals of inertia matrix are nonzero, and moments_rmse doesn't capture that
         coords_pred = M_pred.coords
 
-    coords_true = M_true.coords # assumes M_true is already in principal axes, which it should be if it's from the datamodule
+    coords_true = M_true.coords  # assumes M_true is already in principal axes, which it should be if it's from the datamodule
 
     # Deviation from conditioning information
     cond_errors = torch.square(coords_pred.abs() - M_true.cond_labels)
     cond_errors = torch.where(M_true.cond_mask, cond_errors, 0.0)
+    cond_rmse = cond_errors.sum().sqrt().item() / M_true.cond_mask.float().sum().item()
+
     moments_errors = torch.square(moments_pred - M_true.moments[0])
     assert moments_errors.numel() == 3
+    moments_rmse = moments_errors.sum().sqrt().item()
 
     # Deviation from inferred molecular graph
     correctness = connectivity_correctness(M_pred=M_pred, M_true=M_true)
@@ -90,32 +95,26 @@ def evaluate_prediction(M_pred, M_true, return_aligned_mol=False, keep_coords_pr
 
     heavy_mask = (atom_nums.squeeze(-1) != 1)
     heavy_atom_nums = atom_nums[heavy_mask]
-    heavy_M_pred = M_pred.replace(
-        atom_nums=heavy_atom_nums,
-        coords=coords_pred[heavy_mask],
-    )
-    heavy_M_true = M_true.replace(
-        atom_nums=heavy_atom_nums,
-        coords=coords_true[heavy_mask],
-    )
-    # RMSE on aligned heavy atom coordinates because hydrogens are not as important
+    heavy_M_pred = M_pred.replace(atom_nums=heavy_atom_nums, coords=coords_pred[heavy_mask])
+    heavy_M_true = M_true.replace(atom_nums=heavy_atom_nums, coords=coords_true[heavy_mask])
+
+    # Correctness and RMSE on aligned heavy atom coordinates because hydrogens are not as important
+    heavy_correctness = connectivity_correctness(M_pred=heavy_M_pred, M_true=heavy_M_true)
     heavy_rmse, transform = coord_rmse(
         atom_nums=heavy_atom_nums,
         coords_pred=heavy_M_pred.coords,
         coords_true=heavy_M_true.coords,
     )
-    aligned_coords = einops.einsum(transform, coords_pred, "i j, n j -> n i")
-
-    heavy_correctness = connectivity_correctness(M_pred=heavy_M_pred, M_true=heavy_M_true)
 
     metrics = {
-        "unsigned_coords_rmse": cond_errors.sum().sqrt().item(),
-        "moments_rmse": moments_errors.sum().sqrt().item(),
+        "unsigned_coords_rmse": cond_rmse,
+        "moments_rmse": moments_rmse,
         "correctness": correctness,
         "heavy_correctness": heavy_correctness,
         "coord_rmse": rmse,
         "heavy_coord_rmse": heavy_rmse,
     }
 
+    aligned_coords = einops.einsum(transform, coords_pred, "i j, n j -> n i")
     M_aligned = M_pred.replace(coords=aligned_coords)
     return (metrics, M_aligned) if return_aligned_mol else metrics
