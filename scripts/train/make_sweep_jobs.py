@@ -43,8 +43,6 @@ SWEEP_GRID = [
     [
         ("edm-e3", "--architecture=edm --egnn_equivariance=e3 --disable_egnn_relaxed"),
         ("edm-ref", "--architecture=edm --disable_egnn_relaxed"),
-        ("edm-e3-lowlr", "--architecture=edm --egnn_equivariance=e3 --disable_egnn_relaxed --lr=0.0001"),
-        ("edm-ref-lowlr", "--architecture=edm --disable_egnn_relaxed --lr=0.0001"),
         ("tf-ref", "--disable_norm_adaptively --disable_egnn_relaxed"),
         ("tf-ref-rlx", "--disable_norm_adaptively"),
         ("tf-ref-rlx-ada", ""),
