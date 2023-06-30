@@ -30,7 +30,7 @@ TRAIN_COMMAND_TEMPLATE = (
     "srun python -m src.experimental.train "
     "--accelerator=gpu --devices=1 --num_workers=8 "
     "--dataset=qm9 --enable_wandb --wandb_project=sweep_architecture_train_qm9_uniform --pdropout_cond 0.0 1.0 "
-    "--max_epochs=3000 "
+    "--max_epochs=4000 "
     "--check_samples_every_n_epochs=200 --samples_assess_n_batches=10 --samples_visualize_n_mols=0"
 )
 
@@ -41,11 +41,11 @@ SWEEP_GRID = [
     # [("ortho", ""), ("trnsl", "--disable_project_sample_orthogonally")],
     # ["--norm_type=layer", "--norm_type=none --disable_norm_adaptively"],
     [
-        ("edm-e3", "--architecture=edm --egnn_equivariance=e3 --disable_egnn_relaxed"),
-        ("edm-ref", "--architecture=edm --disable_egnn_relaxed"),
-        ("tf-ref", "--disable_norm_adaptively --disable_egnn_relaxed"),
-        ("tf-ref-rlx", "--disable_norm_adaptively"),
-        ("tf-ref-rlx-ada", ""),
+        ("edm-e3-lowlr", "--architecture=edm --egnn_equivariance=e3 --disable_egnn_relaxed --lr=0.0001 --wandb_run_id ${SLURM_JOB_ID} --checkpoint_dir /checkpoint/${USER}/${SLURM_JOB_ID}"),
+        ("edm-ref-lowlr", "--architecture=edm --disable_egnn_relaxed --lr=0.0001 --wandb_run_id ${SLURM_JOB_ID} --checkpoint_dir /checkpoint/${USER}/${SLURM_JOB_ID}"),
+        ("tf-ref", "--disable_norm_adaptively --disable_egnn_relaxed --wandb_run_id 9890686 --checkpoint_dir /checkpoint/alstonlo/9890686"),
+        ("tf-ref-rlx", "--disable_norm_adaptively --wandb_run_id=9890687 --checkpoint_dir /checkpoint/alstonlo/9890687"),
+        ("tf-ref-rlx-ada", "--wandb_run_id=9890688 --checkpoint_dir /checkpoint/alstonlo/9890688"),
     ]
 ]
 
