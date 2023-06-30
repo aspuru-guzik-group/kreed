@@ -18,5 +18,5 @@ IFS=$'\n' read -d '' -r -a lines < sweep_train_edm_qm9_jobs
 cd ../..
 
 echo "Starting task $SLURM_ARRAY_TASK_ID: ${lines[SLURM_ARRAY_TASK_ID]}"
-echo ${lines[SLURM_ARRAY_TASK_ID]} --wandb_run_id ${SLURM_JOB_ID} --checkpoint_dir /checkpoint/${USER}/${SLURM_JOB_ID}
-eval ${lines[SLURM_ARRAY_TASK_ID]} --wandb_run_id ${SLURM_JOB_ID} --checkpoint_dir /checkpoint/${USER}/${SLURM_JOB_ID}
+echo ${lines[SLURM_ARRAY_TASK_ID]}
+eval ${lines[SLURM_ARRAY_TASK_ID]}
