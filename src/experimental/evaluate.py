@@ -19,6 +19,8 @@ from src.metrics import evaluate_prediction
 
 assert TrainEquivariantDDPMConfig, "Needed for checkpoint loading!"
 
+torch.set_float32_matmul_precision("medium")
+
 
 class EvaluateEquivariantDDPMConfig(pydantic.BaseModel):
     """Configuration object for evaluating the DDPM."""

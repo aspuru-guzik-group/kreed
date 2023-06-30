@@ -4,11 +4,14 @@ from typing import List, Optional
 
 import pydantic_cli
 import pytorch_lightning as pl
+import torch
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint, ModelSummary
 from pytorch_lightning.loggers import WandbLogger
 
 from src.datamodule import ConformerDatamodule
 from src.diffusion import EquivariantDDPMConfig, LitEquivariantDDPM
+
+torch.set_float32_matmul_precision("medium")
 
 
 class TrainEquivariantDDPMConfig(EquivariantDDPMConfig):
