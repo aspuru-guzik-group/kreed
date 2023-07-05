@@ -60,6 +60,10 @@ def evaluate_baseline(config: EvaluateBaselineConfig):
         config_export = cfg.dict()
         json.dump(config_export, f, indent=2)
 
+    if results_path.exists() and results_path.stat().st_size > 0:
+        print("Results already exist, skipping")
+        return 0
+
     if progress_path.exists():
         evaluated_mols, results = torch.load(progress_path, map_location="cpu")
     else:

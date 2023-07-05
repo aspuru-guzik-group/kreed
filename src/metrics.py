@@ -80,7 +80,9 @@ def evaluate_prediction(M_pred, M_true, return_aligned_mol=False, keep_coords_pr
     # Deviation from conditioning information
     cond_errors = torch.square(coords_pred.abs() - M_true.cond_labels)
     cond_errors = torch.where(M_true.cond_mask, cond_errors, 0.0)
-    cond_rmse = cond_errors.sum().sqrt().item() / M_true.cond_mask.float().sum().item()
+
+    n_cond = M_true.cond_mask.float().sum().item()
+    cond_rmse = cond_errors.sum().sqrt().item() / n_cond if n_cond > 0 else 0.0
 
     moments_errors = torch.square(moments_pred - M_true.moments[0])
     assert moments_errors.numel() == 3

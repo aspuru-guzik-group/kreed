@@ -79,7 +79,10 @@ geom_values, bin_edges = np.histogram(geom_train_dists, bins=left_bins, density=
 values = {'qm9': qm9_values, 'geom': geom_values}
 
 def scoring(dists, dataset='qm9'):
-    vals = values[dataset][(dists * N / rightbound).astype(int)]
+    idx = (dists * N / rightbound).astype(int)
+    if np.any(idx > N):
+        return 1e6
+    vals = values[dataset][idx]
     if 0 in vals:
         return 1e6
     return -np.log(vals).sum()
@@ -173,7 +176,7 @@ class GeneticMinimizer(object):
         tries = 0
         # ensure that each mutation always introduces a novel configuration
         while np.packbits(ind.discrete.astype(np.uint8)).tobytes() in self.tabu:
-            if tries > 50:
+            if tries >= min(self.D, 50):
                 break
             
             n_flip = self._gen.binomial(self.D, rate)
@@ -227,11 +230,12 @@ class GeneticMinimizer(object):
         ind1.discrete[col::skip], ind2.discrete[col::skip] = (
             ind2.discrete[col::skip].copy(), ind1.discrete[col::skip].copy())
         
-        cx1 = self._gen.randint(0, self.N - 1)
-        cx2 = self._gen.randint(cx1, self.N)
+        if self.D > 1:
+            cx1 = self._gen.randint(0, self.D - 1)
+            cx2 = self._gen.randint(cx1, self.D)
 
-        ind1.discrete[cx1:cx2], ind2.discrete[cx1:cx2] = (
-            ind2.discrete[cx1:cx2].copy(), ind1.discrete[cx1:cx2].copy())
+            ind1.discrete[cx1:cx2], ind2.discrete[cx1:cx2] = (
+                ind2.discrete[cx1:cx2].copy(), ind1.discrete[cx1:cx2].copy())
         
         return ind1, ind2
 
