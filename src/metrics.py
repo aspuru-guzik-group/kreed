@@ -3,6 +3,7 @@ import itertools
 import einops
 import scipy
 import torch
+import numpy as np
 
 from src import kraitchman
 
@@ -36,19 +37,20 @@ def coord_rmse(atom_nums, coords_pred, coords_true):
 
     # An T x N x N matrix where transformed_costs[t][i][j] is the cost of assigning atom #i in
     # coords_pred (under the t-th transformation) to atom #j in coords_true.
-    # For our purposes, the cost is the MSE between the coordinates of the two atoms.
+    # For our purposes, the cost between atoms i and j is their squared distance.
     # However, we have to be careful about not assigning two atoms of different types together.
     # To avoid this, we can set their cost to infinity.
     transformed_costs = torch.square(transformed_coords_preds - coords_true).sum(dim=-1)
     transformed_costs = torch.where(atom_nums == atom_nums.T, transformed_costs, torch.inf)
     transformed_costs = transformed_costs.cpu().numpy()
 
+    # RMSD = root mean squared distance
+    # but call it rmse
     rmses = []
     for cost in transformed_costs:
         row_ind, col_ind = scipy.optimize.linear_sum_assignment(cost)
-        rmses.append(cost[row_ind, col_ind].sum())
+        rmses.append(np.sqrt( np.mean( cost[row_ind, col_ind] ) ))
     rmses = torch.tensor(rmses).to(coords_pred)
-    rmses = rmses.sqrt() / coords_pred.shape[0]
 
     idx = rmses.argmin()
     return rmses[idx].item(), TRANSFORMS[idx]
@@ -79,14 +81,14 @@ def evaluate_prediction(M_pred, M_true, return_aligned_mol=False, keep_coords_pr
 
     # Deviation from conditioning information
     cond_errors = torch.square(coords_pred.abs() - M_true.cond_labels)
-    cond_errors = torch.where(M_true.cond_mask, cond_errors, 0.0)
+    cond_errors = cond_errors[M_true.cond_mask]
 
-    n_cond = M_true.cond_mask.float().sum().item()
-    cond_rmse = cond_errors.sum().sqrt().item() / n_cond if n_cond > 0 else 0.0
+    n_cond = cond_errors.numel()
+    cond_rmse = cond_errors.mean().sqrt().item() if n_cond > 0 else 0.0
 
     moments_errors = torch.square(moments_pred - M_true.moments[0])
     assert moments_errors.numel() == 3
-    moments_rmse = moments_errors.sum().sqrt().item() / 3
+    moments_rmse = (moments_errors.sum() / 3).sqrt().item()
 
     # Deviation from inferred molecular graph
     correctness = connectivity_correctness(M_pred=M_pred, M_true=M_true)
