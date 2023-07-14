@@ -9,6 +9,20 @@ import math
 
 PTABLE = GetPeriodicTable()
 
+# make sure isotopologues appear first
+ordering = {
+    "C" : 0,
+    "O" : 1,
+    "N" : 2,
+    "S" : 3,
+    "Si" : 4,
+    "Cl" : 5,
+    "H" : 10,
+    "F" : 11,
+}
+def sort_key(x):
+    return ordering.get(x, 5)
+
 def formula_to_dict(formula):
     # convert to dict
     formula_dict = {}
@@ -29,13 +43,28 @@ def constants_to_planar_moments(A,B,C):
 
     return Px, Py, Pz
 
-def kra_to_molecule(formula, kra, rot):
+def kra_to_molecule(ground_truth, formula, kra, rot):
     formula_dict = formula_to_dict(formula)
+    ground_truth_formula = dict()
+
+    atom_nums = []
+    coords = []
+    for t, x, y, z in sorted(ground_truth, key=lambda x: sort_key(x[0])):
+        ground_truth_formula[t] = ground_truth_formula.get(t, 0) + 1
+        atom_nums.append(PTABLE.GetAtomicNumber(t))
+        if x is None:
+            x = 0
+        if y is None:
+            y = 0
+        if z is None:
+            z = 0
+        coords.append([x, y, z])
+    
+    assert ground_truth_formula == formula_dict, f"{ground_truth_formula} != {formula_dict}"
 
     for t, x, y, z in kra:
         formula_dict[t] -= 1
 
-    atom_nums = []
     cond_labels = []
     cond_mask = []
     for t, x, y, z in kra:
@@ -47,7 +76,7 @@ def kra_to_molecule(formula, kra, rot):
                 label.append(0)
                 mask.append(0)
             else:
-                label.append(q)
+                label.append(abs(q))
                 mask.append(1)
         cond_labels.append(label)
         cond_mask.append(mask)
@@ -67,7 +96,7 @@ def kra_to_molecule(formula, kra, rot):
     cond_mask = torch.tensor(cond_mask, dtype=torch.bool)
     masses = chem.atom_masses_from_nums(atom_nums)
     masses_normalized = masses / masses.sum()
-    coords = torch.zeros_like(cond_labels)
+    coords = torch.tensor(coords, dtype=torch.float)
     moments = einops.repeat(torch.tensor(moments, dtype=torch.float), "c -> n c", n=coords.shape[0])
     geom_id = torch.full([n, 1], 0, dtype=torch.long)
 
