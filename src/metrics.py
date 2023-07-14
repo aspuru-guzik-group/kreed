@@ -1,6 +1,7 @@
 import itertools
 
 import einops
+from scipy import optimize # needed for linear_sum_assignment
 import scipy
 import torch
 import numpy as np
