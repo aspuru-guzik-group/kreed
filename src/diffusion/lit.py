@@ -149,7 +149,8 @@ class LitEquivariantDDPM(pl.LightningModule):
 
         M_trues = M.cpu().unbatch()
         M_preds = M_preds.cpu().unbatch()
-        frames = {step: m.unbatch() for step, m in frames.items()}
+        if n_visualize > 0:
+            frames = {step: m.unbatch() for step, m in frames.items()}
 
         metrics = collections.defaultdict(list)
 
