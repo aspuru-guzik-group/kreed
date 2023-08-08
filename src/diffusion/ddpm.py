@@ -94,7 +94,6 @@ class EquivariantDDPM(nn.Module):
         cfg = self.config
 
         if puncond > 0:
-            assert False  # TODO: remove later, just here as a temporary sanity assert
             uncond_mask = torch.rand([M.batch_size, 1]).to(M.coords) <= puncond
             uncond_mask = M.broadcast(uncond_mask)
             M = M.replace(
@@ -123,7 +122,6 @@ class EquivariantDDPM(nn.Module):
         if w == 0:
             return self(M=M, t=t)
         else:
-            assert False  # TODO: remove later, just here as a temporary sanity assert
             return ((1 + w) * self(M=M, t=t, puncond=0.0)) - (w * self(M=M, t=t, puncond=1.0))
 
     def sigma(self, gamma):
