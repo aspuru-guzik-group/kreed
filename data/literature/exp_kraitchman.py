@@ -9,28 +9,6 @@ import math
 
 PTABLE = GetPeriodicTable()
 
-# make sure isotopologues appear first
-ordering = {
-    "C" : 0,
-    "O" : 1,
-    "N" : 2,
-    "S" : 3,
-    "Si" : 4,
-    "Cl" : 5,
-    "H" : 10,
-    "F" : 11,
-}
-def sort_key(x):
-    return ordering.get(x, 5)
-
-def formula_to_dict(formula):
-    # convert to dict
-    formula_dict = {}
-    for f in formula.split(" "):
-        f = f.split("_")
-        formula_dict[f[0]] = int(f[1])
-    return formula_dict
-
 def constants_to_planar_moments(A,B,C):
     conversion = 5.05376e5
     Ix = conversion / A
@@ -43,35 +21,30 @@ def constants_to_planar_moments(A,B,C):
 
     return Px, Py, Pz
 
-def kra_to_molecule(ground_truth, formula, kra, rot):
-    formula_dict = formula_to_dict(formula)
-    ground_truth_formula = dict()
+def kra_to_molecule(ground_truth, kra, rot):
+    # formula_dict = make_formula_dict([t for t, x, y, z in kra])
+    if ground_truth is None:
+        ground_truth = []
+        for t_, x_, y_, z_ in kra:
+            ground_truth.append((t_, 0.0, 0.0, 0.0))
+
+    assert len(ground_truth) == len(kra), f"{len(ground_truth)} != {len(kra)}"
 
     atom_nums = []
     coords = []
-    for t, x, y, z in sorted(ground_truth, key=lambda x: sort_key(x[0])):
-        ground_truth_formula[t] = ground_truth_formula.get(t, 0) + 1
-        atom_nums.append(PTABLE.GetAtomicNumber(t))
-        if x is None:
-            x = 0
-        if y is None:
-            y = 0
-        if z is None:
-            z = 0
-        coords.append([x, y, z])
-    
-    assert ground_truth_formula == formula_dict, f"{ground_truth_formula} != {formula_dict}"
-
-    for t, x, y, z in kra:
-        formula_dict[t] -= 1
-
     cond_labels = []
     cond_mask = []
-    for t, x, y, z in kra:
+    for i in range(len(ground_truth)):
+        t, x, y, z = ground_truth[i]
+        t_, x_, y_, z_ = kra[i]
+
+        assert t == t_, f"{t} != {t_}"
         atom_nums.append(PTABLE.GetAtomicNumber(t))
+        coords.append([x, y, z])
+        
         label = []
         mask = []
-        for q in [x, y, z]:
+        for q in [x_, y_, z_]:
             if q is None:
                 label.append(0)
                 mask.append(0)
@@ -81,17 +54,10 @@ def kra_to_molecule(ground_truth, formula, kra, rot):
         cond_labels.append(label)
         cond_mask.append(mask)
 
-    for key in sorted(formula_dict.keys()):
-        val = formula_dict[key]
-        for _ in range(val):
-            atom_nums.append(PTABLE.GetAtomicNumber(key))
-            cond_labels.append([0, 0, 0])
-            cond_mask.append([0, 0, 0])
-
     moments = constants_to_planar_moments(*rot)
 
     n = len(atom_nums)
-    atom_nums = torch.tensor(atom_nums, dtype=torch.long)
+    atom_nums = torch.tensor(atom_nums, dtype=torch.long).unsqueeze(-1)
     cond_labels = torch.tensor(cond_labels, dtype=torch.float)
     cond_mask = torch.tensor(cond_mask, dtype=torch.bool)
     masses = chem.atom_masses_from_nums(atom_nums)
@@ -124,20 +90,17 @@ atom_num_to_mass_difference = {
     80: PTABLE.GetMassForIsotope(80, 202) - PTABLE.GetMassForIsotope(80, 200),
 }
 
-def formula_to_mass(formula):
-    formula_dict = formula_to_dict(formula)
-    mass = 0
-    for key, val in formula_dict.items():
-        mass += PTABLE.GetMostCommonIsotopeMass(PTABLE.GetAtomicNumber(key)) * val
-    return mass
-
-def kraitchman(parent_rot, iso_rot, formula):
+def kraitchman(parent_rot, iso_rot):
+    atomic_symbols = [x[0] for x in iso_rot]
+    mass = sum([PTABLE.GetMostCommonIsotopeMass(PTABLE.GetAtomicNumber(x)) for x in atomic_symbols])
     parent = constants_to_planar_moments(*parent_rot)
-    mass = formula_to_mass(formula)
 
     out = []
     for iso in iso_rot:
         at, iso = iso[0], iso[1:]
+        if None in iso:
+            out.append([at, None, None, None])
+            continue
         iso = constants_to_planar_moments(*iso)
 
         dm = atom_num_to_mass_difference[PTABLE.GetAtomicNumber(at)]
