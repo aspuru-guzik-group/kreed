@@ -34,12 +34,14 @@ def compare_fit(view, M_true, M_pred, length=.65, radius=0.01, color='white', ob
                 view = add(view, start, end, color=color, radius=radius, obj=obj, radiusRatio=radiusRatio, fromCap=cap, toCap=cap, viewer=viewer)
     return view
 
-from pathlib import Path
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-import base64
+
 
 def save_view(view, fname='test.png'):
+    from pathlib import Path
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    import base64
+    
     net = f'<img id="img_A"><script src="https://3Dmol.org/build/3Dmol-min.js"></script><script src="https://3Dmol.org/build/3Dmol.ui-min.js"></script>' + view._make_html()
     net = net.replace('viewer_{0}.render();'.format(view.uniqueid), 'viewer_{0}.render();\nvar png = viewer_{0}.pngURI();\ndocument.getElementById("img_A").src = png;'.format(view.uniqueid))
     p = Path('temp.html')
