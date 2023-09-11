@@ -1,0 +1,154 @@
+<div id="3dmolviewer_UNIQUEID"  style="position: relative; width: 1500px; height: 750px">
+        <p id="3dmolwarning_UNIQUEID" style="background-color:#ffcccc;color:black">You appear to be running in JupyterLab (or JavaScript failed to load for some other reason).  You need to install the 3dmol extension: <br>
+        <tt>jupyter labextension install jupyterlab_3dmol</tt></p>
+        </div>
+<script>
+
+var loadScriptAsync = function(uri){
+  return new Promise((resolve, reject) => {
+    //this is to ignore the existence of requirejs amd
+    var savedexports, savedmodule;
+    if (typeof exports !== 'undefined') savedexports = exports;
+    else exports = {}
+    if (typeof module !== 'undefined') savedmodule = module;
+    else module = {}
+
+    var tag = document.createElement('script');
+    tag.src = uri;
+    tag.async = true;
+    tag.onload = () => {
+        exports = savedexports;
+        module = savedmodule;
+        resolve();
+    };
+  var firstScriptTag = document.getElementsByTagName('script')[0];
+  firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+});
+};
+
+if(typeof $3Dmolpromise === 'undefined') {
+$3Dmolpromise = null;
+  $3Dmolpromise = loadScriptAsync('https://cdn.jsdelivr.net/npm/3dmol@latest/build/3Dmol-min.min.js');
+}
+
+var viewer_UNIQUEID = null;
+var warn = document.getElementById("3dmolwarning_UNIQUEID");
+if(warn) {
+    warn.parentNode.removeChild(warn);
+}
+$3Dmolpromise.then(function() {
+var viewergrid_UNIQUEID = null;
+viewergrid_UNIQUEID = $3Dmol.createViewerGrid(document.getElementById("3dmolviewer_UNIQUEID"),{rows: 3, cols: 6, control_all: true},{backgroundColor:"white"});
+viewer_UNIQUEID = viewergrid_UNIQUEID[0][0];
+viewergrid_UNIQUEID[0][0].zoomTo();viewergrid_UNIQUEID[0][1].zoomTo();viewergrid_UNIQUEID[0][2].zoomTo();viewergrid_UNIQUEID[0][3].zoomTo();viewergrid_UNIQUEID[0][4].zoomTo();viewergrid_UNIQUEID[0][5].zoomTo();viewergrid_UNIQUEID[1][0].zoomTo();viewergrid_UNIQUEID[1][1].zoomTo();viewergrid_UNIQUEID[1][2].zoomTo();viewergrid_UNIQUEID[1][3].zoomTo();viewergrid_UNIQUEID[1][4].zoomTo();viewergrid_UNIQUEID[1][5].zoomTo();viewergrid_UNIQUEID[2][0].zoomTo();viewergrid_UNIQUEID[2][1].zoomTo();viewergrid_UNIQUEID[2][2].zoomTo();viewergrid_UNIQUEID[2][3].zoomTo();viewergrid_UNIQUEID[2][4].zoomTo();viewergrid_UNIQUEID[2][5].zoomTo();	viewergrid_UNIQUEID[0][0].addModel("23\n\nC -1.799806 -0.653406 0.275609\nC -0.632725 0.201844 -0.258359\nC 0.745454 -0.268790 0.217603\nC 1.867286 0.572327 -0.401063\nC 3.239733 0.331350 0.215207\nC 0.963838 -1.760491 -0.093022\nO -3.048303 -0.139330 -0.119802\nN -0.981449 1.586161 0.134917\nH 0.783688 -0.130945 1.313336\nH -0.586110 2.255738 -0.513933\nH -0.662482 0.164734 -1.350938\nH 0.244187 -2.371730 0.442328\nH -1.749936 -1.673980 -0.125949\nH 0.854966 -1.934615 -1.154478\nH 1.612842 1.631581 -0.289037\nH -1.731048 -0.701498 1.372089\nH 3.205745 0.463991 1.294314\nH -2.974429 0.827419 -0.046322\nH -0.627874 1.755072 1.073564\nH 1.916230 0.363791 -1.479414\nH 3.963558 1.042447 -0.203403\nH 1.959879 -2.067087 0.211735\nH 3.609230 -0.673287 0.007079\n","xyz");
+	viewergrid_UNIQUEID[0][0].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[0][0].setBackgroundColor("#cffbcf");
+	viewergrid_UNIQUEID[0][1].addModel("23\n\nC 1.563138 -0.855780 0.364428\nC 0.721579 0.427073 0.205091\nC -0.768252 0.208173 0.494865\nC -1.470407 -0.697149 -0.540978\nC -2.877794 -1.117489 -0.081933\nC -1.477149 1.563481 0.598365\nO 0.956271 0.952528 -1.097634\nN 2.983988 -0.531231 0.149553\nH -3.302796 -1.804603 -0.811990\nH -2.515590 1.438662 0.883517\nH 3.547942 -1.385132 0.240374\nH 1.907364 0.847708 -1.252936\nH -1.436489 2.070297 -0.364666\nH -0.991413 2.197484 1.344385\nH 3.306555 0.130124 0.863775\nH -0.835150 -0.285255 1.475813\nH -1.524012 -0.157684 -1.487703\nH 1.101605 1.149696 0.941847\nH -2.830245 -1.605053 0.893096\nH 1.357403 -1.302280 1.344575\nH -0.876359 -1.593774 -0.691485\nH -3.529210 -0.251523 0.000829\nH 1.288274 -1.568519 -0.418285\n","xyz");
+	viewergrid_UNIQUEID[0][1].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[0][1].setBackgroundColor("#f4ccca");
+	viewergrid_UNIQUEID[0][2].addModel("23\n\nC -1.758872 -0.644650 0.108298\nC -0.473782 0.177058 -0.088900\nC 0.733014 -0.474844 0.563937\nC 2.007284 0.396567 0.494425\nC 2.492619 0.731507 -0.910602\nC 1.010118 -1.882616 0.033366\nO -2.852899 -0.004449 -0.495103\nN -0.797550 1.539189 0.362766\nH -1.668549 -1.628723 -0.354813\nH -1.939157 -0.775269 1.186273\nH 1.967441 -2.229082 0.399772\nH 1.827189 1.327927 1.031631\nH 1.754746 1.325997 -1.444066\nH -0.055003 2.177118 0.079913\nH 1.028465 -1.881368 -1.047347\nH -0.305958 0.243601 -1.169211\nH 2.808381 -0.126899 1.024313\nH 0.243968 -2.571774 0.362795\nH 2.667118 -0.177891 -1.486854\nH -0.864590 1.555047 1.370648\nH 3.407333 1.291959 -0.864262\nH -2.770089 0.930224 -0.296290\nH 0.506802 -0.570647 1.637147\n","xyz");
+	viewergrid_UNIQUEID[0][2].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[0][2].setBackgroundColor("#cffbcf");
+	viewergrid_UNIQUEID[0][3].addModel("22\n\nC 0.886149 0.549797 0.749097\nC 0.159078 -0.632597 1.362203\nC -0.529736 -1.230555 0.106575\nC -0.777061 0.028085 -0.750348\nC -2.225918 0.485037 -0.791355\nC 2.834630 1.046602 -0.531665\nH -2.844147 -0.287683 -1.255807\nH 2.253217 1.478370 -1.360377\nH 3.702639 0.534680 -0.925531\nH -0.571645 -0.281766 2.084418\nH 1.148974 1.327595 1.473908\nH -2.288058 1.400692 -1.396269\nH 3.139671 1.845198 0.152824\nH -0.418296 -0.151177 -1.769097\nH -2.258064 1.388948 0.914214\nH 1.138992 -1.794888 -0.665135\nH -1.471716 -1.723313 0.352585\nH 0.848726 -1.332737 1.818624\nO -2.772216 0.688772 0.491245\nO 0.020268 1.090033 -0.198617\nO 2.075662 0.071545 0.150450\nO 0.265867 -2.186654 -0.515222\n","xyz");
+	viewergrid_UNIQUEID[0][3].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[0][3].setBackgroundColor("#cffbcf");
+	viewergrid_UNIQUEID[0][4].addModel("22\n\nC -0.591069 -1.057326 0.004333\nC 0.483392 -0.926443 -1.088723\nC 1.617989 -0.131625 -0.396377\nC 0.888411 0.551041 0.766382\nC 0.312015 1.924991 0.448583\nC -2.895236 -0.622848 0.355079\nH 1.555398 0.635934 1.629069\nH -0.809097 -2.097006 0.287307\nH 0.064328 -0.373178 -1.921878\nH 2.035748 0.624325 -1.062506\nH -3.691885 -0.019770 -0.093034\nH -2.661745 -0.247249 1.356471\nH -1.146393 1.383690 -0.735227\nH 2.396168 -1.622945 0.533244\nH 1.137599 2.627948 0.318528\nH 0.841798 -1.891420 -1.436966\nH -0.297772 2.239312 1.297794\nH -3.219901 -1.661892 0.422482\nO -1.776608 -0.490698 -0.494761\nO -0.122319 -0.391746 1.153900\nO -0.428178 2.017264 -0.750741\nO 2.704689 -0.912755 -0.012887\n","xyz");
+	viewergrid_UNIQUEID[0][4].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[0][4].setBackgroundColor("#cffbcf");
+	viewergrid_UNIQUEID[0][5].addModel("22\n\nC -1.215981 -0.011058 -0.798920\nC -0.143706 0.950020 -1.333058\nC 1.100888 0.921624 -0.459920\nC 1.564383 -0.523918 -0.245245\nC 0.382088 -1.388032 0.250481\nC -2.772172 -0.207074 0.977683\nH 0.012485 1.391248 1.091055\nH 2.486282 0.142953 1.280742\nH 1.916079 -0.945471 -1.200741\nH 1.916406 1.487857 -0.941445\nH 0.128598 -1.066138 1.273853\nH -2.447042 -1.218391 1.259162\nH 0.116769 0.648158 -2.347880\nH -3.631356 -0.290666 0.295530\nH -0.555054 1.954467 -1.365370\nH -3.076649 0.345102 1.868877\nH -2.038430 -0.124822 -1.532919\nH 0.672299 -2.441112 0.294866\nO -0.730072 -1.319479 -0.602913\nO 0.922174 1.562938 0.773981\nO 2.629305 -0.581245 0.649085\nO -1.724258 0.539037 0.388493\n","xyz");
+	viewergrid_UNIQUEID[0][5].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[0][5].setBackgroundColor("#cffbcf");
+	viewergrid_UNIQUEID[1][0].addModel("19\n\nC 1.031746 -1.100634 0.003039\nC 2.134200 -0.190033 -0.014385\nC -1.854406 1.199861 0.044591\nC 0.598234 1.684467 0.013105\nC -0.547444 0.768358 0.105998\nC 2.030579 1.151227 -0.037097\nC -2.940753 0.339403 -0.018330\nC -2.691277 -1.026171 -0.054628\nC -1.408328 -1.515366 -0.015458\nC -0.282930 -0.631074 0.023950\nH -2.039370 2.275450 0.042321\nH 1.225513 -2.162462 -0.013669\nH 2.867364 1.851955 -0.073925\nH -3.949876 0.725145 -0.045317\nH 0.461723 2.355777 -0.861999\nH -3.531203 -1.715186 -0.096824\nH 0.584835 2.373216 0.882793\nH -1.221324 -2.576076 -0.036843\nO 3.301720 -0.707272 -0.025281\n","xyz");
+	viewergrid_UNIQUEID[1][0].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[1][0].setBackgroundColor("#feefb2");
+	viewergrid_UNIQUEID[1][1].addModel("19\n\nC 1.023820 -1.088675 -0.006898\nC 2.076801 -0.195480 -0.014580\nC 1.857773 1.185182 -0.008062\nC 0.563636 1.662512 0.005467\nC -0.543611 0.783486 0.009407\nC -1.875481 1.253514 -0.001907\nC -2.938588 0.371208 0.007426\nC -2.697269 -1.012214 0.024635\nC -1.414367 -1.502468 0.024188\nC -0.296810 -0.621204 0.006407\nH -3.540065 -1.698010 0.038371\nH 0.381888 2.726669 0.013643\nH 1.205795 -2.161044 -0.007530\nH 2.706594 1.848332 -0.010434\nH -2.054034 2.316241 -0.013338\nH -3.955493 0.744289 0.009097\nH 3.409287 -1.579501 -0.033220\nH -1.228536 -2.566336 0.025611\nO 3.377810 -0.603821 -0.035972\n","xyz");
+	viewergrid_UNIQUEID[1][1].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[1][1].setBackgroundColor("#cffbcf");
+	viewergrid_UNIQUEID[1][2].addModel("19\n\nC -1.374744 -0.728924 -0.023335\nC -2.311988 0.267431 0.028517\nC -1.906468 1.616738 0.053381\nC -0.570115 1.942522 0.048715\nC 0.413229 0.934984 0.019343\nC 1.797088 1.253581 0.054292\nC 2.749556 0.261665 0.031619\nC 2.363401 -1.085644 -0.043377\nC 1.036695 -1.434437 -0.086191\nC 0.032199 -0.431187 -0.035813\nH -2.662729 2.382162 0.088056\nH 0.769657 -2.484258 -0.152309\nH -3.359541 0.016151 0.058224\nH 3.126838 -1.870371 -0.070022\nH -0.260512 2.974361 0.067206\nH 3.801854 0.512867 0.073372\nH -1.069450 -2.620042 -0.103765\nH 2.080664 2.292021 0.088774\nO -1.825081 -2.023959 -0.038497\n","xyz");
+	viewergrid_UNIQUEID[1][2].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[1][2].setBackgroundColor("#cffbcf");
+	viewergrid_UNIQUEID[1][3].addModel("19\n\nC -1.355395 -0.741647 0.005999\nC -2.307820 0.244481 0.019377\nC -1.923300 1.600324 0.024300\nC -0.595018 1.954238 0.026432\nC 0.404030 0.944527 0.007211\nC 1.782725 1.265548 -0.006324\nC 2.738006 0.269489 -0.023804\nC 2.345527 -1.088212 -0.031014\nC 1.020081 -1.427553 -0.009982\nC 0.043797 -0.419271 -0.003599\nH -0.287453 2.990963 0.022229\nH 0.710193 -2.457408 -0.016119\nH 3.785249 0.529081 -0.027400\nH -2.623472 -2.168414 0.002807\nH -3.362673 -0.019885 0.025154\nH -2.689679 2.357280 0.038175\nH 3.106493 -1.850891 -0.045287\nH 2.072489 2.301658 -0.000757\nO -1.659797 -2.058069 -0.006374\n","xyz");
+	viewergrid_UNIQUEID[1][3].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[1][3].setBackgroundColor("#cffbcf");
+	viewergrid_UNIQUEID[1][4].addModel("12\n\nC 1.271223 0.291577 -0.259704\nO 1.504747 -0.838922 0.159546\nN 0.088386 0.931302 -0.097850\nC -1.032971 0.293338 0.569362\nC -1.814311 -0.632250 -0.350799\nH -2.677991 -1.034335 0.167419\nH -1.684180 1.076909 0.951137\nH -1.181770 -1.463562 -0.670650\nH -2.163940 -0.094342 -1.227216\nH -0.624650 -0.278483 1.406972\nH -0.033562 1.805270 -0.565264\nH 2.022476 0.926620 -0.745097\n","xyz");
+	viewergrid_UNIQUEID[1][4].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[1][4].setBackgroundColor("#cffbcf");
+	viewergrid_UNIQUEID[1][5].addModel("18\n\nC -3.306103 -0.278111 -0.055739\nC -1.958517 0.173232 0.165817\nC -0.879036 -0.614788 -0.099019\nC 0.519845 -0.244329 -0.000545\nC 1.489099 -1.271091 0.085285\nC 2.839942 -0.971805 0.038647\nC 3.267183 0.345703 -0.077589\nC 2.328405 1.365448 -0.118428\nC 0.971622 1.071843 -0.085723\nH -1.839844 1.172758 0.561839\nH 2.648780 2.397727 -0.194127\nH 4.316199 0.569394 -0.135800\nH -1.064119 -1.631228 -0.421057\nH 1.151137 -2.290288 0.186131\nH -3.399022 -1.325645 -0.435669\nH 3.566655 -1.777785 0.097635\nH 0.244999 1.879689 -0.158686\nO -4.309998 0.381373 0.141994\n","xyz");
+	viewergrid_UNIQUEID[1][5].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[1][5].setBackgroundColor("#cffbcf");
+	viewergrid_UNIQUEID[2][0].addModel("17\n\nC -2.582983 0.051861 0.014042\nC -1.862133 1.237869 -0.006955\nC -0.471692 1.207642 -0.013997\nC 0.196022 -0.011957 -0.016425\nC -0.534310 -1.200377 0.008432\nC -1.912996 -1.164737 0.013773\nC 1.698940 -0.102356 -0.007815\nC 2.500801 1.175800 0.028622\nH 3.555245 0.924899 0.025767\nH 2.273114 1.786802 -0.848907\nH 0.004326 -2.133749 0.003016\nH -2.478992 -2.093620 0.024974\nH 0.083456 2.134703 -0.021062\nH -3.665911 0.076242 0.015220\nH 2.257072 1.747806 0.915170\nH -2.372279 2.193287 -0.009433\nO 2.248643 -1.187727 -0.021362\n","xyz");
+	viewergrid_UNIQUEID[2][0].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[2][0].setBackgroundColor("#cffbcf");
+	viewergrid_UNIQUEID[2][1].addModel("16\n\nN -0.335950 -1.145764 0.011420\nC -1.064163 0.007396 0.031014\nC -0.275425 1.308168 0.123480\nC 1.176753 1.204297 -0.313350\nC 1.808076 -0.016096 0.329623\nC 1.095582 -1.270945 -0.156351\nH 1.440109 -2.143858 0.411306\nH 2.866136 -0.073900 0.075883\nH 1.338272 -1.442413 -1.217737\nH 1.710881 2.112949 -0.029968\nH -0.891984 -1.980947 -0.127994\nH -0.330935 1.606233 1.172363\nH 1.726338 0.043882 1.411046\nH -0.820701 2.056576 -0.455265\nH 1.228960 1.114363 -1.403565\nO -2.283057 -0.003291 -0.010485\n","xyz");
+	viewergrid_UNIQUEID[2][1].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[2][1].setBackgroundColor("#cffbcf");
+	viewergrid_UNIQUEID[2][2].addModel("25\n\nC -1.167667 0.987867 -0.901306\nC 1.924435 1.010944 1.301336\nC -2.505756 -0.522956 0.593221\nC 1.860021 -0.823726 -0.253369\nC -1.148054 -0.716046 -0.238889\nC -1.295699 -2.076556 0.112770\nC -2.410234 1.515269 -0.468103\nC 2.872823 0.141964 0.388761\nC -3.044859 0.724860 0.446763\nC 3.908054 0.590644 -0.185255\nH 1.680699 -1.617283 0.481542\nH -1.306465 -2.775562 -0.708229\nH 4.378334 0.066766 -0.997254\nH -2.696630 2.536561 -0.707235\nH -3.902783 1.057747 0.986616\nH -0.848108 -2.490377 0.996345\nH 4.403361 1.490667 0.166687\nH 2.535312 1.577983 1.978627\nH 2.353821 -1.232438 -1.141243\nH 1.231515 0.394903 1.849518\nH 0.393412 0.101245 -1.394872\nH -2.961400 -1.256925 1.218748\nH -0.524359 1.703089 -1.443949\nH 1.368597 1.669273 0.656583\nO 0.370752 -0.701625 -0.719493\n","xyz");
+	viewergrid_UNIQUEID[2][2].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[2][2].setBackgroundColor("#f4ccca");
+	viewergrid_UNIQUEID[2][3].addModel("29\n\nC 4.230898 -1.151793 0.155158\nC 3.667225 -0.471117 1.226822\nC 2.451397 0.169863 1.107501\nC 1.769723 0.202630 -0.102781\nC 2.352634 -0.491514 -1.216610\nC 3.557296 -1.162638 -1.070551\nC 0.380737 0.877772 0.130516\nC -0.165236 1.507525 -1.595408\nC -0.463690 0.386374 -0.623655\nC -2.052650 0.483694 -0.219978\nC -4.023852 -0.746592 0.140553\nC -4.475540 -2.183279 0.373151\nH -4.281136 -2.779540 -0.513921\nH -0.776512 2.344412 -1.305333\nH -0.593481 2.105476 1.200095\nH -3.937205 -2.615898 1.202209\nH 0.852879 1.858442 -1.776921\nH -4.583779 -0.298246 -0.690335\nH -4.184530 -0.132249 1.027888\nH 1.841480 -0.490373 -2.167003\nH 4.179961 -0.454747 2.180868\nH -5.547697 -2.210037 0.583259\nH -0.523165 1.154786 -2.606182\nH 5.165928 -1.663127 0.256732\nH 3.981360 -1.691079 -1.907764\nH 2.020509 0.683659 1.955136\nO 0.104078 1.452919 1.368826\nO -2.625502 -0.733587 -0.183230\nO -2.499669 1.479504 0.247653\n","xyz");
+	viewergrid_UNIQUEID[2][3].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[2][3].setBackgroundColor("#cffbcf");
+	viewergrid_UNIQUEID[2][4].addModel("29\n\nC -2.974704 -1.272967 0.072658\nC -2.474758 -0.739932 1.256228\nC -1.503543 0.170714 1.226702\nC -0.982734 0.703888 0.004812\nC -1.481498 0.136082 -1.179433\nC -2.466464 -0.818306 -1.140762\nC -0.083689 -1.781478 -0.070347\nC -0.418665 3.123147 -0.442535\nC 1.472535 -1.424361 -0.091345\nC 1.901157 -0.056027 0.249685\nC 1.839378 2.210464 -0.525252\nC 0.710016 2.844870 0.231172\nH 2.815195 2.385191 -0.187904\nH -3.756669 -2.020198 0.095564\nH -1.289992 3.517228 0.048732\nH 3.172473 -2.344903 -0.104941\nH 1.672669 1.835495 -1.514304\nH -2.924902 -1.030781 2.200644\nH -1.053706 0.428578 -2.113286\nH -0.250669 -2.430120 -0.911998\nH -0.510579 2.945837 -1.501224\nH -1.074478 0.552963 2.149919\nH 0.807729 2.912833 1.293695\nH -0.338533 -2.194799 0.874034\nH -2.874938 -1.205587 -2.066137\nH 2.991105 0.145350 0.365754\nO 1.509692 -0.479321 -1.077701\nO 1.268173 0.447316 1.320156\nO 2.235690 -2.511152 0.150369\n","xyz");
+	viewergrid_UNIQUEID[2][4].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[2][4].setBackgroundColor("#f4ccca");
+	viewergrid_UNIQUEID[2][5].addModel("14\n\nC 2.335451 -0.334486 -0.250967\nC 0.895386 -0.047223 0.035086\nC -0.081558 -1.010063 0.059669\nC -1.497260 -0.547102 0.425779\nO 0.607830 1.231099 0.291754\nH 2.434535 -0.778241 -1.238643\nH -2.167592 -1.410337 0.440738\nH 0.106778 -2.063595 -0.074903\nH -0.362326 1.372877 0.251118\nH -1.512710 -0.080605 1.419737\nH 2.909867 0.592229 -0.208328\nH 2.726291 -1.034976 0.480330\nH -1.909313 0.075308 -1.370929\nO -1.987467 0.433172 -0.475035\n","xyz");
+	viewergrid_UNIQUEID[2][5].setStyle({"model": -1},{"sphere": {"scale": 0.5}});
+	viewergrid_UNIQUEID[2][5].setBackgroundColor("#feefb2");
+	viewergrid_UNIQUEID[2][3].zoom(0.8);
+	viewergrid_UNIQUEID[1][5].zoom(0.9);
+	viewergrid_UNIQUEID[0][0].render();
+	viewergrid_UNIQUEID[0][1].render();
+	viewergrid_UNIQUEID[0][2].render();
+	viewergrid_UNIQUEID[0][3].render();
+	viewergrid_UNIQUEID[0][4].render();
+	viewergrid_UNIQUEID[0][5].render();
+	viewergrid_UNIQUEID[1][0].render();
+	viewergrid_UNIQUEID[1][1].render();
+	viewergrid_UNIQUEID[1][2].render();
+	viewergrid_UNIQUEID[1][3].render();
+	viewergrid_UNIQUEID[1][4].render();
+	viewergrid_UNIQUEID[1][5].render();
+	viewergrid_UNIQUEID[2][0].render();
+	viewergrid_UNIQUEID[2][1].render();
+	viewergrid_UNIQUEID[2][2].render();
+	viewergrid_UNIQUEID[2][3].render();
+	viewergrid_UNIQUEID[2][4].render();
+	viewergrid_UNIQUEID[2][5].render();
+	viewergrid_UNIQUEID[0][0].js();
+	viewergrid_UNIQUEID[0][1].js();
+	viewergrid_UNIQUEID[0][2].js();
+	viewergrid_UNIQUEID[0][3].js();
+	viewergrid_UNIQUEID[0][4].js();
+	viewergrid_UNIQUEID[0][5].js();
+	viewergrid_UNIQUEID[1][0].js();
+	viewergrid_UNIQUEID[1][1].js();
+	viewergrid_UNIQUEID[1][2].js();
+	viewergrid_UNIQUEID[1][3].js();
+	viewergrid_UNIQUEID[1][4].js();
+	viewergrid_UNIQUEID[1][5].js();
+	viewergrid_UNIQUEID[2][0].js();
+	viewergrid_UNIQUEID[2][1].js();
+	viewergrid_UNIQUEID[2][2].js();
+	viewergrid_UNIQUEID[2][3].js();
+	viewergrid_UNIQUEID[2][4].js();
+	viewergrid_UNIQUEID[2][5].js();
+viewergrid_UNIQUEID[2][5].render();
+viewergrid_UNIQUEID[2][4].render();
+viewergrid_UNIQUEID[2][3].render();
+viewergrid_UNIQUEID[2][2].render();
+viewergrid_UNIQUEID[2][1].render();
+viewergrid_UNIQUEID[2][0].render();
+viewergrid_UNIQUEID[1][5].render();
+viewergrid_UNIQUEID[1][4].render();
+viewergrid_UNIQUEID[1][3].render();
+viewergrid_UNIQUEID[1][2].render();
+viewergrid_UNIQUEID[1][1].render();
+viewergrid_UNIQUEID[1][0].render();
+viewergrid_UNIQUEID[0][5].render();
+viewergrid_UNIQUEID[0][4].render();
+viewergrid_UNIQUEID[0][3].render();
+viewergrid_UNIQUEID[0][2].render();
+viewergrid_UNIQUEID[0][1].render();
+viewergrid_UNIQUEID[0][0].render();
+});
+</script>

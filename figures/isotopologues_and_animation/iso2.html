@@ -1,0 +1,64 @@
+<div id="3dmolviewer_UNIQUEID"  style="position: relative; width: 1500px; height: 1500px">
+        <p id="3dmolwarning_UNIQUEID" style="background-color:#ffcccc;color:black">You appear to be running in JupyterLab (or JavaScript failed to load for some other reason).  You need to install the 3dmol extension: <br>
+        <tt>jupyter labextension install jupyterlab_3dmol</tt></p>
+        </div>
+<script>
+
+var loadScriptAsync = function(uri){
+  return new Promise((resolve, reject) => {
+    //this is to ignore the existence of requirejs amd
+    var savedexports, savedmodule;
+    if (typeof exports !== 'undefined') savedexports = exports;
+    else exports = {}
+    if (typeof module !== 'undefined') savedmodule = module;
+    else module = {}
+
+    var tag = document.createElement('script');
+    tag.src = uri;
+    tag.async = true;
+    tag.onload = () => {
+        exports = savedexports;
+        module = savedmodule;
+        resolve();
+    };
+  var firstScriptTag = document.getElementsByTagName('script')[0];
+  firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+});
+};
+
+if(typeof $3Dmolpromise === 'undefined') {
+$3Dmolpromise = null;
+  $3Dmolpromise = loadScriptAsync('https://cdn.jsdelivr.net/npm/3dmol@latest/build/3Dmol-min.min.js');
+}
+
+var viewer_UNIQUEID = null;
+var warn = document.getElementById("3dmolwarning_UNIQUEID");
+if(warn) {
+    warn.parentNode.removeChild(warn);
+}
+$3Dmolpromise.then(function() {
+viewer_UNIQUEID = $3Dmol.createViewer(document.getElementById("3dmolviewer_UNIQUEID"),{backgroundColor:"white"});
+viewer_UNIQUEID.zoomTo();
+	viewer_UNIQUEID.addModel("18\n\nC -1.995922 -0.197197 0.000288\nH -1.828835 -0.813044 -0.886630\nH -3.014313 0.187272 -0.001460\nH -1.830683 -0.809814 0.889816\nO -1.155533 0.936200 -0.000853\nC 0.183446 0.668075 -0.000307\nC 0.938588 -0.478811 -0.000281\nC 2.304425 -0.085602 0.000155\nC 2.324566 1.282645 0.000386\nN 1.035440 1.731888 -0.000169\nH 0.729582 2.688688 0.001052\nH 3.153911 1.959697 0.000515\nC 3.470737 -1.019068 0.000300\nH 3.461985 -1.657187 0.885672\nH 4.396714 -0.451163 -0.001014\nH 3.460606 -1.659136 -0.883666\nO 0.472305 -1.778224 -0.000587\nH 1.244217 -2.353811 0.000111\n","xyz");
+	viewer_UNIQUEID.setStyle({"sphere": {"scale": 0.5}});
+	viewer_UNIQUEID.setStyle({"index": 0},{"sphere": {"scale": 0.5, "color": "yellow"}});
+	viewer_UNIQUEID.addArrow({"start": {"x": 0.7880393266677856, "y": 0.0778580904006958, "z": -0.00011390270083211362}, "end": {"x": 7.225981050263273, "y": -0.8181920239483987, "z": 0.0006318608819002291}, "radius": 0.25, "color": "red", "mid": 0.9});
+	viewer_UNIQUEID.addArrow({"start": {"x": 0.7880393266677856, "y": 0.0778580904006958, "z": -0.00011390270083211362}, "end": {"x": 1.6840894776119408, "y": 6.515799846124463, "z": -0.00039121352434180073}, "radius": 0.25, "color": "green", "mid": 0.9});
+	viewer_UNIQUEID.addArrow({"start": {"x": 0.7880393266677856, "y": 0.0778580904006958, "z": -0.00011390270083211362}, "end": {"x": 0.7873389115733157, "y": 0.07823556001484251, "z": 6.499886048601891}, "radius": 0.25, "color": "blue", "mid": 0.9});
+	viewer_UNIQUEID.addArrow({"start": {"x": 0.0, "y": 0.0, "z": 0.0}, "end": {"x": 6.5, "y": 0.0, "z": 0.0}, "radius": 0.25, "color": "yellow", "mid": 0.9});
+	viewer_UNIQUEID.addArrow({"start": {"x": 0.0, "y": 0.0, "z": 0.0}, "end": {"x": 0.0, "y": 6.5, "z": 0.0}, "radius": 0.25, "color": "yellow", "mid": 0.9});
+	viewer_UNIQUEID.addArrow({"start": {"x": 0.0, "y": 0.0, "z": 0.0}, "end": {"x": 0.0, "y": 0.0, "z": 6.5}, "radius": 0.25, "color": "yellow", "mid": 0.9});
+	viewer_UNIQUEID.addLabel("x",{"position": {"x": 5.8, "y": -1.0, "z": 0.0}, "backgroundOpacity": 0.0, "fontColor": "red", "fontSize": 80});
+	viewer_UNIQUEID.addLabel("y",{"position": {"x": 1.9, "y": 6.0, "z": 0.0}, "backgroundOpacity": 0.0, "fontColor": "green", "fontSize": 80});
+	viewer_UNIQUEID.addLabel("z",{"position": {"x": 0.5, "y": 0.0, "z": 6.5}, "backgroundOpacity": 0.0, "fontColor": "blue", "fontSize": 80});
+	viewer_UNIQUEID.addLabel("x'",{"position": {"x": 6.5, "y": 0.6, "z": 0.0}, "backgroundOpacity": 0.0, "fontColor": "#8B8000", "fontSize": 80});
+	viewer_UNIQUEID.addLabel("y'",{"position": {"x": 0.5, "y": 6.5, "z": 0.0}, "backgroundOpacity": 0.0, "fontColor": "#8B8000", "fontSize": 80});
+	viewer_UNIQUEID.addLabel("z'",{"position": {"x": 0.0, "y": 0.15, "z": 6.5}, "backgroundOpacity": 0.0, "fontColor": "#8B8000", "fontSize": 80});
+	viewer_UNIQUEID.rotate(30,{"x": 1, "y": -1, "z": -0.2});
+	viewer_UNIQUEID.zoomTo();
+	viewer_UNIQUEID.translate(-80,-50);
+	viewer_UNIQUEID.render();
+	viewer_UNIQUEID.js();
+viewer_UNIQUEID.render();
+});
+</script>
