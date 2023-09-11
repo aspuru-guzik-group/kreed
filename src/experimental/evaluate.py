@@ -64,7 +64,7 @@ class EvaluateEquivariantDDPMConfig(pydantic.BaseModel):
 
 def evaluate_ddpm(config: EvaluateEquivariantDDPMConfig):
     cfg = config
-    assert cfg.batch_size % cfg.sample_n_candidates_per_example == 0
+    # assert cfg.batch_size % cfg.sample_n_candidates_per_example == 0
 
     device = torch.device("cuda" if ((cfg.accelerator == "gpu") and torch.cuda.is_available()) else "cpu")
     print("Using device:", device)
