@@ -200,13 +200,13 @@ class EquivariantDDPM(nn.Module):
         return self.sample_M_randn_like(M_0, mean=mu, std=sigma)
 
     @torch.no_grad()
-    def sample(self, M, keep_frames=None, w=None):
+    def sample(self, M, keep_frames=None, w=None, tqdm_disable=None):
         M = M.replace(coords=torch.zeros_like(M.coords))  # safety, so we don't cheat
         M_T = self.sample_M_randn_like(M)
         frames = {self.T: M_T}
 
         M_t = M_T
-        for step in tqdm.tqdm(reversed(range(0, self.T)), desc="Sampling", leave=False, total=self.T, disable=None):
+        for step in tqdm.tqdm(reversed(range(0, self.T)), desc="Sampling", leave=False, total=self.T, disable=tqdm_disable):
             s = torch.full(size=[M.batch_size], fill_value=step, device=M.device)
             M_t = self.sample_Ms_given_Mt(M_t=M_t, s=s, t=(s + 1), w=w)
 
