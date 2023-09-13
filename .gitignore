@@ -174,3 +174,5 @@ geom_run_reflect_eq_il_p10_samples
 samples_MoML
 slurm
 results
+.qm9_train_dists.npy
+.geom_train_dists.npy
