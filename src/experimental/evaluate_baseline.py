@@ -81,6 +81,7 @@ def evaluate_baseline(config: EvaluateBaselineConfig):
             M = utils.dropout_unsigned_coords(M, dropout_mask=nonC_mask)
         
         M_samples = baseline.run_baseline(M, ngen=cfg.ngen, dataset=cfg.dataset, verbose=False, popsize=cfg.popsize, num_samples=cfg.num_samples)
+        # set verbose to True to see progress of genetic algorithm
 
         # Compute metrics
         M_true = M.replace(graph=None)

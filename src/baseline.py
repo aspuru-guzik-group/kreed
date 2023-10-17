@@ -37,6 +37,7 @@ if os.path.exists('.qm9_train_dists.npy'):
     qm9_train_dists = np.load('.qm9_train_dists.npy')
     geom_train_dists = np.load('.geom_train_dists.npy')
 else:
+    print('Computing distance histograms...')
     data = ConformerDatamodule(
         dataset='qm9',
         seed=100,
