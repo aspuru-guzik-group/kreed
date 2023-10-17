@@ -4,6 +4,8 @@ KREED: **K**raitchman **RE**flection-**E**quivariant **D**iffusion
 
 Code for Reflection-Equivariant Diffusion for 3D Structure Determination from Isotopologue Rotational Spectra in Natural Abundance
 
+[Colab demo](https://colab.research.google.com/drive/17OWnUfGW8zqTdurAPahCGok7sxWP3Rza?usp=sharing)
+
 Follow instructions in SETUP.md to setup the QM9 and GEOM datasets.
 Preprocessed datasets and generated samples can be found [here](https://drive.google.com/drive/folders/1eRA5-Z42gSkw5IJobADGPJT_2lPMogOf?usp=sharing)
 
