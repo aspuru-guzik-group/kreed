@@ -1,6 +1,8 @@
-# unsigned-to-signed
-Code for 3D structure determination by inferring signed from unsigned coordinates
+# kreed
 
+KREED: **K**raitchman **RE**flection-**E**quivariant **D**iffusion
+
+Code for Reflection-Equivariant Diffusion for 3D Structure Determination from Isotopologue Rotational Spectra in Natural Abundance
 
 Follow instructions in SETUP.md to setup the QM9 and GEOM datasets.
 Preprocessed datasets and generated samples can be found [here](https://drive.google.com/drive/folders/1eRA5-Z42gSkw5IJobADGPJT_2lPMogOf?usp=sharing)
