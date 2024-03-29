@@ -2,7 +2,9 @@
 
 KREED: **K**raitchman **RE**flection-**E**quivariant **D**iffusion
 
-Code for Reflection-Equivariant Diffusion for 3D Structure Determination from Isotopologue Rotational Spectra in Natural Abundance
+[Paper](https://doi.org/10.1063/5.0196620) and [arXiv](https://arxiv.org/abs/2310.11609)
+
+Code for "Determining 3D structure from molecular formula and isotopologue rotational spectra in natural abundance with reflection-equivariant diffusion"
 
 For a ready-to-use demonstration of the trained model, check out the [Colab notebook](https://colab.research.google.com/drive/17OWnUfGW8zqTdurAPahCGok7sxWP3Rza?usp=sharing)
 
