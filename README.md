@@ -10,7 +10,7 @@ For a ready-to-use demonstration of the trained model, check out the [Colab note
 
 ## Training the model
 Follow instructions in SETUP.md to setup the QM9 and GEOM datasets.
-Preprocessed datasets and generated samples can be found [here](https://drive.google.com/drive/folders/1eRA5-Z42gSkw5IJobADGPJT_2lPMogOf?usp=sharing)
+Preprocessed datasets and generated samples can be found [here](https://doi.org/10.5683/SP3/BJ7U7Y)
 
 
 Setting up conda environment:
